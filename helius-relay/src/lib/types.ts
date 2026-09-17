@@ -100,15 +100,19 @@ export type HistoryRow = {
   timestamp: number | null;
   fee: number | null;
   error: unknown;
-  balanceChanges: { mint: string; amount: number }[];
+  description?: string;
+  type?: string;
+  balanceChanges: { mint: string; amount: number; symbol?: string }[];
 };
 
 export type TransferRow = {
   signature?: string;
   timestamp?: number | null;
   mint?: string;
+  symbol?: string;
   amount?: number;
   from?: string;
   to?: string;
+  counterparty?: string;
   direction?: string;
 };

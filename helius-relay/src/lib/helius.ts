@@ -53,6 +53,21 @@ export async function walletGet(path: string) {
   return res;
 }
 
+export async function enhancedAddressHistory(address: string, limit = 12) {
+  const key = requireApiKey();
+  const res = await fetch(
+    `${ENHANCED}/v0/addresses/${address}/transactions?api-key=${key}&limit=${limit}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return [];
+  const json = await res.json();
+  return Array.isArray(json) ? json : [];
+}
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function getAssetsByOwner(ownerAddress: string) {
   return heliusRpc<{ items?: DasAsset[] }>("getAssetsByOwner", {
     ownerAddress,

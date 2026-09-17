@@ -52,3 +52,21 @@ export function txTypeLabel(type?: string) {
   if (!type) return "TX";
   return type.replaceAll("_", " ");
 }
+
+const MINT_SYMBOLS: Record<string, string> = {
+  So11111111111111111111111111111111111111111: "SOL",
+  So11111111111111111111111111111111111111112: "wSOL",
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "USDC",
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "JUP",
+  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: "mSOL",
+  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: "JitoSOL",
+};
+
+export const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111111";
+
+export function mintSymbol(mint?: string, fallback?: string | null) {
+  if (fallback) return fallback;
+  if (!mint) return "UNK";
+  return MINT_SYMBOLS[mint] ?? shorten(mint, 4);
+}

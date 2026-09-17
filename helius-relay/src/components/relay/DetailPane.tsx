@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { formatSol, formatTokenAmount, formatUsd, lamportsToSol, shorten, timeAgo } from "@/lib/format";
+import { formatSol, formatTokenAmount, formatUsd, lamportsToSol, mintSymbol, shorten, timeAgo } from "@/lib/format";
 import type { DeskMode, Dossier, WireEvent } from "@/lib/types";
 
 type Props = {
@@ -14,7 +14,6 @@ type Props = {
 };
 
 export function DetailPane({ mode, event, dossier, dossierState, selectedAddress, onAddress }: Props) {
-  const showDossier = Boolean(selectedAddress) && (!event || dossier?.address === selectedAddress);
 
   return (
     <aside className="flex flex-col min-h-0 border-l border-[var(--line)] bg-[var(--panel)]">
@@ -127,7 +126,7 @@ function EventView({ event, onAddress }: { event: WireEvent; onAddress: (address
                 <span className="text-[var(--faint)]"> → </span>
                 <span className="mono text-[var(--mute)]">{shorten(transfer.toUserAccount ?? "", 4)}</span>
                 <span className="ml-2 tabular-nums">
-                  {formatTokenAmount(transfer.tokenAmount)} {shorten(transfer.mint ?? "", 3)}
+                  {formatTokenAmount(transfer.tokenAmount)} {mintSymbol(transfer.mint, transfer.symbol)}
                 </span>
               </div>
             ))}
@@ -177,14 +176,16 @@ function DossierView({
     return <div className="text-[13px] text-[var(--mute)]">Select an address.</div>;
   }
 
-  const identityName = dossier.identity && typeof dossier.identity === "object" ? dossier.identity.name : null;
+  const identityName =
+    dossier.identity && typeof dossier.identity === "object" ? dossier.identity.name : null;
+  const showPlanNote = dossier.gated.identity || dossier.gated.fundedBy || !identityName;
 
   return (
     <div className="space-y-5">
       <div>
         <div className="text-[18px] font-semibold tracking-[-0.03em]">{identityName || "Unlabeled wallet"}</div>
         <button
-          className="mono text-[11px] text-[var(--mute)] hover:text-[var(--ink)]"
+          className="mono text-[11px] text-[var(--mute)] hover:text-[var(--ink)] break-all text-left"
           onClick={() => navigator.clipboard.writeText(address)}
         >
           {address}
@@ -196,7 +197,7 @@ function DossierView({
         <Stat label="Book" value={formatUsd(dossier.balances.totalUsd)} />
       </div>
 
-      {dossier.gated.identity || dossier.gated.fundedBy ? (
+      {showPlanNote ? (
         <div className="rounded-lg border border-[var(--line)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--mute)]">
           Identity and funding source are Developer-plan Wallet API endpoints. The rest of this dossier is live on
           Free.
@@ -244,11 +245,16 @@ function DossierView({
                     {row.timestamp ? timeAgo(row.timestamp * 1000) : ""}
                   </span>
                 </div>
-                <div className="mt-1 text-[var(--mute)]">
-                  {row.balanceChanges
-                    .slice(0, 3)
-                    .map((change) => `${change.amount > 0 ? "+" : ""}${formatSol(change.amount, 3)} ${shorten(change.mint, 3)}`)
-                    .join(" · ") || "No balance delta"}
+                <div className="mt-1 text-[var(--mute)] leading-snug">
+                  {row.description ||
+                    row.balanceChanges
+                      .slice(0, 3)
+                      .map(
+                        (change) =>
+                          `${change.amount > 0 ? "+" : ""}${formatSol(change.amount, 3)} ${change.symbol || mintSymbol(change.mint)}`,
+                      )
+                      .join(" · ") ||
+                    "No balance delta"}
                 </div>
               </div>
             ))
@@ -260,16 +266,24 @@ function DossierView({
         <div>
           <SectionLabel>Transfers</SectionLabel>
           <div className="mt-2 space-y-2">
-            {dossier.transfers.slice(0, 6).map((row, index) => (
+            {dossier.transfers.slice(0, 8).map((row, index) => (
               <div key={`${row.signature}-${index}`} className="text-[12px] text-[var(--mute)]">
-                <span className="mono">{shorten(row.from || "", 4)}</span>
-                <span className="text-[var(--faint)]"> → </span>
-                <button className="mono hover:text-[var(--ink)]" onClick={() => row.to && onAddress(row.to)}>
-                  {shorten(row.to || "", 4)}
-                </button>
-                <span className="ml-2 tabular-nums">
-                  {formatSol(row.amount ?? 0, 3)} {shorten(row.mint || "SOL", 3)}
+                <span className={row.direction === "out" ? "text-[var(--fail)]" : "text-[var(--signal)]"}>
+                  {row.direction === "in" ? "IN" : row.direction === "out" ? "OUT" : "TX"}
                 </span>
+                <span className="ml-2 tabular-nums">
+                  {formatSol(row.amount ?? 0, 3)} {row.symbol || mintSymbol(row.mint)}
+                </span>
+                <span className="text-[var(--faint)]"> {row.direction === "in" ? "from" : "to"} </span>
+                <button
+                  className="mono hover:text-[var(--ink)]"
+                  onClick={() => {
+                    const peer = row.counterparty || (row.direction === "in" ? row.from : row.to);
+                    if (peer) onAddress(peer);
+                  }}
+                >
+                  {shorten(row.counterparty || row.to || row.from || "", 4)}
+                </button>
               </div>
             ))}
           </div>

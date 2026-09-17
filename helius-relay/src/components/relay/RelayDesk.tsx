@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MAX_WATCH, MODE_COPY, PRESETS } from "@/lib/presets";
+import { MAX_WATCH, PRESETS } from "@/lib/presets";
 import { isPubkey, shorten } from "@/lib/format";
 import type {
   ConnectionState,
@@ -47,6 +47,8 @@ export function RelayDesk() {
   const parsing = useRef(false);
   const seenSigs = useRef(new Set<string>());
   const eventTimes = useRef<number[]>([]);
+  const watchSet = useRef(new Set(watchlist.map((item) => item.address)));
+  watchSet.current = new Set(watchlist.map((item) => item.address));
 
   const selectedEvent = useMemo(() => {
     if (selection?.kind !== "event") return null;
@@ -116,6 +118,8 @@ export function RelayDesk() {
         return;
       }
       if (payload.type === "log" && typeof payload.signature === "string") {
+        const watched = typeof payload.watched === "string" ? payload.watched : undefined;
+        if (watched && !watchSet.current.has(watched)) return;
         const signature = payload.signature;
         if (seenSigs.current.has(signature)) return;
         seenSigs.current.add(signature);
@@ -215,7 +219,6 @@ export function RelayDesk() {
     }));
   };
 
-  const copy = MODE_COPY[mode];
   const failCount = events.filter((event) => event.err != null).length;
 
   return (
