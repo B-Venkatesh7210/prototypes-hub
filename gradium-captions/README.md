@@ -8,7 +8,7 @@ Three products feed one studio:
 
 | Product | Route | What happens | Gradium APIs |
 | --- | --- | --- | --- |
-| Record once, ship in 5 | `/dub` | Upload a clip of up to 10 seconds of someone speaking English. It is transcribed, the speaker's voice is cloned (or flagship voices are used), and the clip is dubbed into up to 4 languages with karaoke captions on the video. Longer clips can be trimmed in the browser. | STT, Instant Clone, STT translation, TTS |
+| Record once, ship in 5 | `/dub` | Upload a clip of up to 10 seconds of someone speaking English. It is transcribed, the speaker's voice is cloned (or flagship voices are used), and the clip is dubbed into up to 4 languages with karaoke captions on the video. Longer clips are rejected at upload. | STT, Instant Clone, STT translation, TTS |
 | Script to voice | `/script` | Type a script, pick a flagship, designed or cloned voice, and get a voice-over with word timings. | TTS, Voice Design, Instant Clone, STT translation |
 | Live captions | `/live` | Talk to your webcam (or just the mic) and watch captions appear on top as you speak. When you stop, the session opens in the studio with the camera video. | Realtime STT (WebSocket) |
 

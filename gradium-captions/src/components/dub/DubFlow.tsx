@@ -5,22 +5,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { cloneSample, decodeToMono, durationOf, probeMedia, wavBlob, type MediaInfo } from "@/lib/client/audio";
 import { db } from "@/lib/client/db";
-import { trimVideo, webCodecsSupported } from "@/lib/client/encode";
 import { fitTrackToClip, newProject, storeBlob, trackLabel, translateTrack } from "@/lib/client/pipeline";
 import { LANG_ACCENT, langName } from "@/lib/langs";
 import { LIMITS, PRICES } from "@/lib/limits";
 import type { Lang, Project, Track, VoiceRef } from "@/lib/types";
 import { catalogVoice, defaultVoice, voicesFor } from "@/lib/voices";
-import { formatTime, uid, withIds } from "@/lib/words";
+import { uid, withIds } from "@/lib/words";
 import { useStatus } from "@/components/shell/StatusProvider";
 import { LangToggles } from "@/components/flow/LangPicker";
 import { useSavedVoices } from "@/components/flow/useSavedVoices";
 import { patchStep, StepList, type Step } from "@/components/flow/StepList";
-import { ArrowRight, Film, Upload, X } from "@/components/ui/icons";
-import { Button, ErrorNote, Label, Panel, Segmented, Spinner } from "@/components/ui/primitives";
+import { ArrowRight, Upload, X } from "@/components/ui/icons";
+import { Button, ErrorNote, Label, Panel, Segmented } from "@/components/ui/primitives";
 
 const SOURCE: Lang = "en";
 const DEFAULT_BED = 0.15;
+/** Containers often round a 10-second clip up slightly, so allow a little slack. */
+const MAX_SECONDS = LIMITS.dubSeconds + 0.25;
 
 function estimateCredits(seconds: number, targets: number) {
   const chars = Math.round(seconds * 16);
@@ -34,8 +35,6 @@ export function DubFlow() {
   const { isMock } = useStatus();
   const fileRef = useRef<HTMLInputElement>(null);
   const [clip, setClip] = useState<Clip | null>(null);
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimming, setTrimming] = useState(false);
   const [title, setTitle] = useState("");
   const [keywords, setKeywords] = useState("Gradium");
   const [targets, setTargets] = useState<Lang[]>(["fr", "de", "es", "pt"]);
@@ -52,7 +51,6 @@ export function DubFlow() {
   useEffect(() => () => void (clip && URL.revokeObjectURL(clip.url)), [clip]);
 
   const activeTargets = useMemo(() => targets.filter((t) => t !== SOURCE).slice(0, LIMITS.dubTargets), [targets]);
-  const tooLong = !!clip && clip.info.duration > LIMITS.dubSeconds + 0.05;
   const clone = voiceMode === "clone";
   const savedPick = saved.voices?.find((v) => v.id === cloneSource) ?? (saved.clonesFull ? saved.clones[0] : undefined);
   const newClone = clone && !savedPick;
@@ -61,8 +59,10 @@ export function DubFlow() {
     const info = await probeMedia(file);
     if (info.kind !== "video") throw new Error("Pick a video file. This product dubs a clip of someone speaking.");
     if (info.duration < 1) throw new Error("That clip is shorter than a second.");
+    if (info.duration > MAX_SECONDS) {
+      throw new Error(`This clip is ${info.duration.toFixed(1)}s. Upload a video of ${LIMITS.dubSeconds} seconds or less.`);
+    }
     setClip({ file, name, url: URL.createObjectURL(file), info });
-    setTrimStart(0);
   };
 
   const pick = async (f: File | undefined) => {
@@ -81,26 +81,11 @@ export function DubFlow() {
     }
   };
 
-  const trim = async () => {
-    if (!clip) return;
-    setTrimming(true);
-    setError("");
-    try {
-      const end = Math.min(clip.info.duration, trimStart + LIMITS.dubSeconds);
-      const cut = await trimVideo(clip.file, trimStart, end);
-      await load(cut, clip.name);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Trimming failed.");
-    } finally {
-      setTrimming(false);
-    }
-  };
-
   const running = steps !== null && !error;
-  const canRun = !!clip && !tooLong && activeTargets.length > 0 && (!newClone || consent) && (!newClone || !!saved.voices) && !running;
+  const canRun = !!clip && activeTargets.length > 0 && (!newClone || consent) && (!newClone || !!saved.voices) && !running;
 
   const run = async () => {
-    if (!clip || tooLong) return;
+    if (!clip) return;
     setError("");
     const plan: Step[] = [
       { id: "decode", label: "Reading the clip", state: "pending" },
@@ -120,7 +105,7 @@ export function DubFlow() {
       set("decode", { state: "active", detail: "Decoding the audio in your browser" });
       const pcm = await decodeToMono(clip.file);
       const seconds = durationOf(pcm);
-      if (seconds > LIMITS.dubSeconds + 0.25) throw new Error(`The clip is ${seconds.toFixed(1)}s. Trim it to ${LIMITS.dubSeconds}s first.`);
+      if (seconds > MAX_SECONDS) throw new Error(`The clip is ${seconds.toFixed(1)}s. Upload a video of ${LIMITS.dubSeconds} seconds or less.`);
       const wav = wavBlob(pcm);
       const [mediaKey, audioKey] = await Promise.all([storeBlob(clip.file), storeBlob(wav)]);
       set("decode", {
@@ -218,8 +203,7 @@ export function DubFlow() {
     }
   };
 
-  const seconds = clip && !tooLong ? clip.info.duration : 0;
-  const canTrim = webCodecsSupported();
+  const seconds = clip ? clip.info.duration : 0;
 
   return (
     <div className="container-medium grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -248,7 +232,7 @@ export function DubFlow() {
                 <Upload size={18} />
               </span>
               <span className="font-favorit text-lg text-bright">Drop a video of someone speaking English</span>
-              <span className="font-plex text-sm text-lightgray">MP4, MOV or WebM · up to {LIMITS.dubSeconds} seconds · any resolution</span>
+              <span className="font-plex text-sm text-lightgray">MP4, MOV or WebM · {LIMITS.dubSeconds} seconds or less · any resolution</span>
             </button>
           ) : (
             <div className="flex flex-col gap-3">
@@ -263,7 +247,7 @@ export function DubFlow() {
                 <Button
                   tone="ghost"
                   size="sm"
-                  disabled={running || trimming}
+                  disabled={running}
                   onClick={() => {
                     setClip(null);
                     setSteps(null);
@@ -273,39 +257,6 @@ export function DubFlow() {
                   <X size={13} /> Replace
                 </Button>
               </div>
-              {tooLong ? (
-                <div className="flex flex-col gap-3 rounded-lg border border-orange/30 bg-orange/[0.06] p-3">
-                  <p className="font-plex text-sm leading-snug text-[#ffd2bd]">
-                    This clip is {clip.info.duration.toFixed(1)}s. The demo dubs up to {LIMITS.dubSeconds} seconds to keep credits low.
-                  </p>
-                  {canTrim ? (
-                    <>
-                      <label className="flex flex-col gap-1.5">
-                        <span className="flex justify-between font-plex text-xs text-lightgray">
-                          Use the {LIMITS.dubSeconds} seconds starting at
-                          <span className="font-code text-bright">
-                            {formatTime(trimStart)} – {formatTime(Math.min(clip.info.duration, trimStart + LIMITS.dubSeconds))}
-                          </span>
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={Math.max(0, clip.info.duration - LIMITS.dubSeconds)}
-                          step={0.1}
-                          value={trimStart}
-                          onChange={(e) => setTrimStart(Number(e.target.value))}
-                          className="accent-[#daff52]"
-                        />
-                      </label>
-                      <Button tone="secondary" size="sm" className="self-start" onClick={trim} disabled={trimming}>
-                        {trimming ? <Spinner className="h-3 w-3" /> : <Film size={13} />} Trim to {LIMITS.dubSeconds}s
-                      </Button>
-                    </>
-                  ) : (
-                    <p className="font-plex text-xs text-lightgray">Trim it to {LIMITS.dubSeconds}s in your editor and upload again.</p>
-                  )}
-                </div>
-              ) : null}
             </div>
           )}
           <input

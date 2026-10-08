@@ -256,20 +256,6 @@ async function copyPackets(
   }
 }
 
-/** Cuts `[start, end]` out of a video, copying the stream where possible. */
-export async function trimVideo(media: Blob, start: number, end: number): Promise<Blob> {
-  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(media) });
-  const output = newOutput();
-  try {
-    const conversion = await Conversion.init({ input, output, trim: { start, end } });
-    if (!conversion.isValid) throw new Error("This video can't be trimmed in the browser. Trim it to 10 seconds first.");
-    await conversion.execute();
-    return new Blob([output.target.buffer!], { type: "video/mp4" });
-  } finally {
-    input.dispose();
-  }
-}
-
 /**
  * Turns a browser recording (fragmented MP4 or WebM, often without a seek index) into a regular
  * MP4. Streams are copied when MP4 can hold them; returns the recording unchanged if that fails.
