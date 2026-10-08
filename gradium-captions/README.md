@@ -65,7 +65,7 @@ All limits are in `src/lib/limits.ts`. Size limits apply in both modes. Daily qu
 | Script | 100 words or 600 characters, up to 2 extra languages, 3 per project |
 | Live | 60 s per take (auto-stop), 5 Gradium takes an hour |
 | Re-voice | lines of up to 25 words, 10 per project |
-| Voices | clone samples capped at 15 s, 3 clones and 3 voice designs (2 candidates each) a day |
+| Voices | clone samples capped at 15 s, 3 cloned voices per account (lifetime, no delete), 3 voice designs (2 candidates each) a day |
 | Budget | 5,000 credits a day per browser, and the same per visitor IP on the server |
 
 The server enforces its own caps too: 12 s for STT, 65 s for translation, 30 s for clone samples and 700 characters for TTS. It returns 413 when a request is too long and 429 when a quota is used up.
@@ -83,6 +83,26 @@ GRADIUM_HOST=api     # api | eu.api | us.api
 ```
 
 The API key never reaches the browser. Live captions use a short-lived single-use token from `/api/live/session`.
+
+## Voice previews
+
+Every flagship voice has a stored preview in `public/previews/<voiceId>.wav`, listed in `src/lib/preview-manifest.json`. The voice picker plays these files directly, so previews are free and work in mock mode too. Only designed-voice candidates are synthesized on demand, because each one is unique.
+
+The files were generated once with Gradium (4,047 credits for 71 voices). To add previews for new voices, or after changing a sample line in `src/lib/previews.ts` (delete that language's files first):
+
+```bash
+npm run previews          # dry run: lists missing previews and their cost
+npm run previews -- --yes # generates only the missing ones
+```
+
+## Your voices
+
+Cloned voices and kept designs are saved on the Gradium account, so they show up under **Your voices** at the top of the **Clone my voice** tab in every voice picker, in any session or project. You name a voice when you clone or keep it. The list is read from `GET /voices/` (non-catalog voices; clones are the ones with a sample file). In mock mode it's a local list in `.data/voices/mock-voices.json`.
+
+- Each account can make at most 3 clones in the demo, and there is no delete option. `/api/voices/clone` counts the account's clones and returns 403 at the cap. The dub flow and the Studio's "fix lines in your voice" panel then offer saved voices instead.
+- Previews are always spoken in the saved voice, so playing one proves the clone works. Right after cloning, the new voice speaks one sample line (about 57 credits, once). A kept design reuses the candidate audio you already heard. Previews are stored in `.data/voices/<voiceId>.wav`, served free by `/api/voices/sample`, and replay at no cost. Voices without one (for example clones made in the dub flow) show a dashed play button that generates it once.
+- The recording a clone was made from is kept as `.data/voices/<voiceId>.source.wav`. It's never played as the preview.
+- `.data/` is gitignored because it holds voice recordings.
 
 ## Layout
 

@@ -64,8 +64,6 @@ function take(req: Request, key: string, max: number, windowMs: number, message:
 }
 
 export const quota = {
-  clone: (req: Request) =>
-    take(req, "clone", LIMITS.clonesPerDay, DAY, `The demo allows ${LIMITS.clonesPerDay} voice clones per day. Reuse a voice you already cloned.`),
   design: (req: Request) =>
     take(req, "design", LIMITS.designsPerDay, DAY, `The demo allows ${LIMITS.designsPerDay} voice designs per day.`),
   liveSession: (req: Request) =>

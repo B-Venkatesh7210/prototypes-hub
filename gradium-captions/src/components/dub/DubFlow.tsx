@@ -14,6 +14,7 @@ import { catalogVoice, defaultVoice, voicesFor } from "@/lib/voices";
 import { formatTime, uid, withIds } from "@/lib/words";
 import { useStatus } from "@/components/shell/StatusProvider";
 import { LangToggles } from "@/components/flow/LangPicker";
+import { useSavedVoices } from "@/components/flow/useSavedVoices";
 import { patchStep, StepList, type Step } from "@/components/flow/StepList";
 import { ArrowRight, Film, Upload, X } from "@/components/ui/icons";
 import { Button, ErrorNote, Label, Panel, Segmented, Spinner } from "@/components/ui/primitives";
@@ -40,6 +41,8 @@ export function DubFlow() {
   const [targets, setTargets] = useState<Lang[]>(["fr", "de", "es", "pt"]);
   const [voiceMode, setVoiceMode] = useState<"clone" | "flagship">("clone");
   const [consent, setConsent] = useState(false);
+  const [cloneSource, setCloneSource] = useState<string>("new");
+  const saved = useSavedVoices();
   const [voiceChoice, setVoiceChoice] = useState<Partial<Record<Lang, string>>>({});
   const [bed, setBed] = useState(DEFAULT_BED);
   const [steps, setSteps] = useState<Step[] | null>(null);
@@ -51,6 +54,8 @@ export function DubFlow() {
   const activeTargets = useMemo(() => targets.filter((t) => t !== SOURCE).slice(0, LIMITS.dubTargets), [targets]);
   const tooLong = !!clip && clip.info.duration > LIMITS.dubSeconds + 0.05;
   const clone = voiceMode === "clone";
+  const savedPick = saved.voices?.find((v) => v.id === cloneSource) ?? (saved.clonesFull ? saved.clones[0] : undefined);
+  const newClone = clone && !savedPick;
 
   const load = async (file: Blob, name: string) => {
     const info = await probeMedia(file);
@@ -92,7 +97,7 @@ export function DubFlow() {
   };
 
   const running = steps !== null && !error;
-  const canRun = !!clip && !tooLong && activeTargets.length > 0 && (!clone || consent) && !running;
+  const canRun = !!clip && !tooLong && activeTargets.length > 0 && (!newClone || consent) && (!newClone || !!saved.voices) && !running;
 
   const run = async () => {
     if (!clip || tooLong) return;
@@ -100,7 +105,7 @@ export function DubFlow() {
     const plan: Step[] = [
       { id: "decode", label: "Reading the clip", state: "pending" },
       { id: "stt", label: "Transcribing English", api: "Speech-to-Text", state: "pending" },
-      ...(clone ? [{ id: "clone", label: "Cloning the speaker's voice", api: "Instant Voice Clone", state: "pending" as const }] : []),
+      ...(newClone ? [{ id: "clone", label: "Cloning the speaker's voice", api: "Instant Voice Clone", state: "pending" as const }] : []),
       ...activeTargets.map((t) => ({
         id: `t-${t}`,
         label: `Dubbing into ${langName(t)}`,
@@ -129,12 +134,16 @@ export function DubFlow() {
       set("stt", { state: "done", detail: `${stt.words.length} words with timestamps${stt.mock ? " · mock transcript" : ""}` });
 
       let cloneRef: VoiceRef | undefined;
-      if (clone) {
+      if (clone && savedPick) {
+        cloneRef = { id: savedPick.id, name: savedPick.name, kind: savedPick.kind, lang: SOURCE };
+      } else if (clone) {
         set("clone", { state: "active", detail: `Using up to ${LIMITS.cloneSampleSeconds}s of the speaker` });
         const res = await api.clone(wavBlob(cloneSample(pcm, LIMITS.cloneSampleSeconds)), `${title || "Speaker"} voice`, SOURCE);
-        cloneRef = { id: res.voiceId, name: "Speaker's voice", kind: "clone", lang: SOURCE };
-        set("clone", { state: "done", detail: res.mock ? "Mock clone matched to the speaker's pitch" : `Voice ${res.voiceId}` });
+        cloneRef = { id: res.voiceId, name: `${title || "Speaker"} voice`, kind: "clone", lang: SOURCE };
+        set("clone", { state: "done", detail: res.mock ? "Mock clone matched to the speaker's pitch" : `Voice ${res.voiceId} · saved to Your voices` });
+        void saved.reload();
       }
+      const speakerVoice = newClone ? cloneRef : undefined;
 
       const info = clip.info;
       const vertical = (info.height ?? 0) > (info.width ?? 0);
@@ -162,7 +171,7 @@ export function DubFlow() {
         audioKey,
         duration: stt.duration,
         words: withIds(stt.words),
-        voice: cloneRef,
+        voice: speakerVoice,
         createdAt: Date.now(),
       };
       project.tracks = [original];
@@ -339,13 +348,37 @@ export function DubFlow() {
             />
             {clone ? (
               <>
-                <p className="font-plex text-xs leading-snug text-lightgray">
-                  Gradium clones the voice from the clip itself. It works best with 8 seconds or more of clear speech.
-                </p>
-                <label className="flex cursor-pointer items-start gap-2.5 font-plex text-xs leading-snug text-lightgray">
-                  <input type="checkbox" className="mt-0.5 accent-[#f2f2f2]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                  I am the speaker, or I have their permission to clone their voice. Free-plan clones are for non-commercial use.
-                </label>
+                {saved.voices?.length ? (
+                  <select className="field" value={savedPick?.id ?? "new"} onChange={(e) => setCloneSource(e.target.value)}>
+                    <option value="new" disabled={saved.clonesFull}>
+                      Clone the speaker from this clip ({saved.clones.length} of {LIMITS.clonesPerAccount} clones used)
+                    </option>
+                    {saved.voices.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        Your voices · {v.name} ({v.kind === "clone" ? "cloned" : "designed"})
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {newClone ? (
+                  <>
+                    <p className="font-plex text-xs leading-snug text-lightgray">
+                      Gradium clones the voice from the clip itself. It works best with 8 seconds or more of clear speech. The clone is
+                      saved to Your voices and uses 1 of this account&apos;s {LIMITS.clonesPerAccount} clones, which can&apos;t be deleted.
+                    </p>
+                    <label className="flex cursor-pointer items-start gap-2.5 font-plex text-xs leading-snug text-lightgray">
+                      <input type="checkbox" className="mt-0.5 accent-[#f2f2f2]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                      I am the speaker, or I have their permission to clone their voice. Free-plan clones are for non-commercial use.
+                    </label>
+                  </>
+                ) : (
+                  <p className="font-plex text-xs leading-snug text-lightgray">
+                    {saved.clonesFull && cloneSource === "new"
+                      ? `This account has used all ${LIMITS.clonesPerAccount} clones, so the dub reuses a saved voice. `
+                      : ""}
+                    Every language is spoken in {savedPick?.name}. No new clone is made.
+                  </p>
+                )}
               </>
             ) : (
               <div className="flex flex-col gap-2">
@@ -413,7 +446,7 @@ export function DubFlow() {
           <Button size="lg" onClick={run} disabled={!canRun}>
             {running ? "Working…" : "Dub this clip"} {running ? null : <ArrowRight size={15} />}
           </Button>
-          {clone && clip && !consent ? <p className="font-plex text-xs text-lightgray">Confirm consent to clone the speaker&apos;s voice.</p> : null}
+          {newClone && clip && !consent ? <p className="font-plex text-xs text-lightgray">Confirm consent to clone the speaker&apos;s voice.</p> : null}
           {error ? <ErrorNote>{error}</ErrorNote> : null}
         </Panel>
         {steps ? (

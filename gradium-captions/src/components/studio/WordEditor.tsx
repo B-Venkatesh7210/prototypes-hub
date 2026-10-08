@@ -21,6 +21,19 @@ import { formatTime } from "@/lib/words";
 import { Check, Search, Trash, Wand, X } from "@/components/ui/icons";
 import { Button, Spinner } from "@/components/ui/primitives";
 
+/** Scrolls the transcript box so the word is visible, without scrolling the page. */
+function revealInBox(box: HTMLElement | null, index: number, smooth: boolean) {
+  const chip = box?.querySelector<HTMLElement>(`[data-word="${index}"]`);
+  if (!box || !chip) return;
+  const boxRect = box.getBoundingClientRect();
+  const chipRect = chip.getBoundingClientRect();
+  const pad = 8;
+  let top: number | null = null;
+  if (chipRect.top < boxRect.top + pad) top = box.scrollTop + (chipRect.top - boxRect.top) - pad;
+  else if (chipRect.bottom > boxRect.bottom - pad) top = box.scrollTop + (chipRect.bottom - boxRect.bottom) + pad;
+  if (top !== null) box.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+}
+
 export function WordEditor({
   words,
   lines,
@@ -62,8 +75,7 @@ export function WordEditor({
 
   useEffect(() => {
     if (!playing || activeIndex < 0) return;
-    const chip = scrollRef.current?.querySelector<HTMLElement>(`[data-word="${activeIndex}"]`);
-    chip?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    revealInBox(scrollRef.current, activeIndex, true);
   }, [activeIndex, playing]);
 
   useEffect(() => {
@@ -77,8 +89,7 @@ export function WordEditor({
     if (!w) return;
     onSelect(index);
     onSeek(w.start);
-    const chip = scrollRef.current?.querySelector<HTMLElement>(`[data-word="${index}"]`);
-    chip?.scrollIntoView({ block: "nearest" });
+    revealInBox(scrollRef.current, index, false);
   };
 
   const apply = (fn: (words: Word[]) => Word[], nextSelected: number | null = selected) => {

@@ -12,6 +12,7 @@ import { defaultVoice, voicesFor } from "@/lib/voices";
 import { formatTime, wordsToText } from "@/lib/words";
 import { useStatus } from "@/components/shell/StatusProvider";
 import { VoicePicker } from "@/components/flow/VoicePicker";
+import { useSavedVoices } from "@/components/flow/useSavedVoices";
 import { Globe, Mic, Trash, Wand } from "@/components/ui/icons";
 import { Button, ErrorNote, Label, Spinner } from "@/components/ui/primitives";
 
@@ -181,6 +182,9 @@ function ScriptEditor({
 function CloneFromTrack({ track, onDone, onError }: { track: Track; onDone: (v: VoiceRef) => void; onError: (msg: string) => void }) {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pick, setPick] = useState("");
+  const saved = useSavedVoices();
+  const savedPick = saved.voices?.find((v) => v.id === pick) ?? saved.voices?.[0];
 
   const clone = async () => {
     setBusy(true);
@@ -193,6 +197,7 @@ function CloneFromTrack({ track, onDone, onError }: { track: Track; onDone: (v: 
       onDone({ id: res.voiceId, name, kind: "clone", lang: track.lang });
     } catch (err) {
       onError(err instanceof Error ? err.message : "Cloning failed");
+      void saved.reload();
     } finally {
       setBusy(false);
     }
@@ -211,17 +216,45 @@ function CloneFromTrack({ track, onDone, onError }: { track: Track; onDone: (v: 
 
   return (
     <Section title="Fix lines in your voice">
-      <p className="font-plex text-sm leading-snug text-lightgray">
-        Clone the voice in this recording so edited lines can be re-spoken without recording them again. This uses the loudest{" "}
-        {LIMITS.cloneSampleSeconds} seconds of the track.
-      </p>
-      <label className="flex cursor-pointer items-start gap-2.5 font-plex text-xs leading-snug text-lightgray">
-        <input type="checkbox" className="mt-0.5 accent-[#f2f2f2]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-        This is my voice, or I have the speaker&apos;s permission to clone it.
-      </label>
-      <Button tone="secondary" onClick={clone} disabled={!consent || busy}>
-        {busy ? <Spinner /> : <Mic size={14} />} Clone voice from this track
-      </Button>
+      {saved.clonesFull ? (
+        <p className="font-plex text-sm leading-snug text-lightgray">
+          This account has used all {LIMITS.clonesPerAccount} cloned voices in the demo. Pick a saved voice to re-speak edited lines.
+        </p>
+      ) : (
+        <>
+          <p className="font-plex text-sm leading-snug text-lightgray">
+            Clone the voice in this recording so edited lines can be re-spoken without recording them again. This uses the loudest{" "}
+            {LIMITS.cloneSampleSeconds} seconds of the track and 1 of {LIMITS.clonesPerAccount - saved.clones.length} clones left on
+            this account. Clones can&apos;t be deleted.
+          </p>
+          <label className="flex cursor-pointer items-start gap-2.5 font-plex text-xs leading-snug text-lightgray">
+            <input type="checkbox" className="mt-0.5 accent-[#f2f2f2]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+            This is my voice, or I have the speaker&apos;s permission to clone it.
+          </label>
+          <Button tone="secondary" onClick={clone} disabled={!consent || busy || !saved.voices}>
+            {busy ? <Spinner /> : <Mic size={14} />} Clone voice from this track
+          </Button>
+        </>
+      )}
+      {saved.voices?.length ? (
+        <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-3">
+          <Label>{saved.clonesFull ? "Your voices" : "Or use one of your voices"}</Label>
+          <select className="field" value={savedPick?.id ?? ""} onChange={(e) => setPick(e.target.value)}>
+            {saved.voices.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name} ({v.kind === "clone" ? "cloned" : "designed"})
+              </option>
+            ))}
+          </select>
+          <Button
+            tone="ghost"
+            onClick={() => savedPick && onDone({ id: savedPick.id, name: savedPick.name, kind: savedPick.kind, lang: track.lang })}
+            disabled={!savedPick || busy}
+          >
+            Use this voice
+          </Button>
+        </div>
+      ) : null}
     </Section>
   );
 }

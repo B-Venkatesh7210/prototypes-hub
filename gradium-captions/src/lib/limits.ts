@@ -24,7 +24,8 @@ export const LIMITS = {
   projectLanguages: { dub: 5, script: 3, live: 3 } satisfies Record<Product, number>,
   /** Voices. */
   cloneSampleSeconds: 15,
-  clonesPerDay: 3,
+  /** Cloned voices one Gradium account may hold. There is no delete, so this is a lifetime cap. */
+  clonesPerAccount: 3,
   designCandidates: 2,
   designsPerDay: 3,
   /** Real credits one browser (and one visitor IP, on the server) may spend per day. */

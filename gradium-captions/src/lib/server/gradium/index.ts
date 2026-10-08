@@ -4,6 +4,7 @@ import type {
   DesignResult,
   Lang,
   LiveSession,
+  SavedVoice,
   SttResult,
   TranslateResult,
   TtsResult,
@@ -12,6 +13,7 @@ import { PRICES } from "@/lib/limits";
 import { GradiumError, isLive, wsBase } from "./config";
 import * as live from "./live";
 import * as mock from "./mock";
+import { addMockVoice, hasSample, listMockVoices, saveSource } from "../voice-store";
 
 export { GradiumError, status } from "./config";
 
@@ -32,10 +34,18 @@ export async function synthesize(text: string, voiceId: string): Promise<TtsResu
   return mock.mockSynthesize(text, voiceId);
 }
 
+/** Clones a voice and keeps the recording it was made from. Its preview is spoken separately. */
 export async function cloneVoice(wav: Uint8Array, name: string, lang: Lang): Promise<CloneResult> {
-  if (isLive()) return { ...(await live.liveClone(wav, name, lang)), credits: 0, mock: false };
-  await latency(900);
-  return { ...mock.mockClone(wav), credits: 0, mock: true };
+  let result: CloneResult;
+  if (isLive()) {
+    result = { ...(await live.liveClone(wav, name, lang)), credits: 0, mock: false };
+  } else {
+    await latency(900);
+    result = { ...mock.mockClone(wav), credits: 0, mock: true };
+    addMockVoice({ id: result.voiceId, name, lang, kind: "clone" });
+  }
+  saveSource(result.voiceId, wav);
+  return result;
 }
 
 export async function designVoice(prompt: string, lang: Lang, n: number): Promise<DesignResult> {
@@ -44,15 +54,18 @@ export async function designVoice(prompt: string, lang: Lang, n: number): Promis
   return mock.mockDesign(prompt, n);
 }
 
-export async function keepDesignedVoice(candidateId: string, name: string): Promise<{ voiceId: string; mock: boolean }> {
+export async function keepDesignedVoice(candidateId: string, name: string, lang: Lang): Promise<{ voiceId: string; mock: boolean }> {
   if (isLive()) return { ...(await live.liveKeep(candidateId, name)), mock: false };
   await latency(400);
-  return { ...mock.mockKeep(candidateId), mock: true };
+  const kept = mock.mockKeep(candidateId);
+  addMockVoice({ id: kept.voiceId, name, lang, kind: "design" });
+  return { ...kept, mock: true };
 }
 
-export async function customVoices() {
-  if (isLive()) return live.liveCustomVoices();
-  return [];
+/** Clones and kept designs on the account, newest last. Mock mode keeps its own list on disk. */
+export async function customVoices(): Promise<SavedVoice[]> {
+  const voices = isLive() ? await live.liveCustomVoices() : listMockVoices();
+  return voices.map((v) => ({ id: v.id, name: v.name, lang: v.lang, kind: v.kind, hasSample: hasSample(v.id) }));
 }
 
 export async function translate(args: {

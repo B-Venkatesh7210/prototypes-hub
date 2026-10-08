@@ -216,7 +216,7 @@ export async function liveKeep(candidateId: string, name: string): Promise<{ voi
   return { voiceId: json.uid };
 }
 
-export type CustomVoice = { id: string; name: string; lang: Lang | null; description?: string | null };
+export type CustomVoice = { id: string; name: string; lang: Lang | null; kind: "clone" | "design" };
 
 export async function liveCustomVoices(): Promise<CustomVoice[]> {
   const res = await fetch(`${apiBase()}/voices/?limit=100`, { headers: { "x-api-key": apiKey() } });
@@ -225,12 +225,13 @@ export async function liveCustomVoices(): Promise<CustomVoice[]> {
     uid: string;
     name: string;
     language?: Lang | null;
-    description?: string | null;
     is_catalog?: boolean;
+    /** Set for voices cloned from an uploaded recording; empty for kept voice designs. */
+    filename?: string | null;
   }[];
   return list
     .filter((v) => !v.is_catalog)
-    .map((v) => ({ id: v.uid, name: v.name, lang: v.language ?? null, description: v.description }));
+    .map((v) => ({ id: v.uid, name: v.name, lang: v.language ?? null, kind: v.filename ? "clone" : "design" }));
 }
 
 /**

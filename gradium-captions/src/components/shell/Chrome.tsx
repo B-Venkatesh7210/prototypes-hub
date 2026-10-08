@@ -72,7 +72,7 @@ const DEMO_LIMITS: [string, string][] = [
   ["Script", `${LIMITS.scriptWords} words · +${LIMITS.scriptTargets} languages`],
   ["Live", `${LIMITS.liveSeconds}s per take · ${LIMITS.liveSessionsPerHour} takes an hour`],
   ["Re-voice", `${LIMITS.revoiceWords} words a line · ${LIMITS.revoicesPerProject} per project`],
-  ["Voices", `${LIMITS.clonesPerDay} clones · ${LIMITS.designsPerDay} designs a day`],
+  ["Voices", `${LIMITS.clonesPerAccount} clones per account · ${LIMITS.designsPerDay} designs a day`],
 ];
 
 function DemoLimits() {

@@ -6,6 +6,7 @@ import type {
   DesignResult,
   Lang,
   LiveSession,
+  SavedVoice,
   ServiceStatus,
   SttResult,
   TranslateResult,
@@ -117,6 +118,7 @@ const OPS = {
   translate: "Speech-to-text translation",
   design: "Voice design",
   live: "Realtime Speech-to-Text",
+  preview: "Voice preview (stored)",
 } as const;
 
 let spendsCredits = false;
@@ -148,7 +150,6 @@ export function budgetLeft(mock: boolean): number {
 
 export const quotaLeft = {
   credits: () => Math.max(0, LIMITS.dailyCredits - creditsSpentToday()),
-  clones: () => Math.max(0, LIMITS.clonesPerDay - realEntries(OPS.clone, DAY).length),
   designs: () => Math.max(0, LIMITS.designsPerDay - realEntries(OPS.design, DAY).length),
   liveSessions: () => Math.max(0, LIMITS.liveSessionsPerHour - realEntries(OPS.live, 3_600_000).length),
 };
@@ -208,11 +209,9 @@ export const api = {
     );
   },
 
+  /** The account caps clones at `LIMITS.clonesPerAccount`; the server enforces it. */
   async clone(wav: Blob, name: string, language: Lang): Promise<CloneResult> {
-    guard(0, {
-      left: quotaLeft.clones(),
-      message: `Demo limit: ${LIMITS.clonesPerDay} voice clones per day. Reuse a voice you already cloned, or pick a flagship voice.`,
-    });
+    guard(0);
     const form = new FormData();
     form.append("audio", wav, "sample.wav");
     form.append("name", name);
@@ -243,15 +242,33 @@ export const api = {
     );
   },
 
-  keepDesign: (candidateId: string, name: string) =>
+  keepDesign: (candidateId: string, name: string, language: Lang) =>
     call<{ voiceId: string; mock: boolean }>("/api/voices/design", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "keep", candidateId, name }),
+      body: JSON.stringify({ action: "keep", candidateId, name, language }),
     }),
 
-  customVoices: () =>
-    call<{ custom: { id: string; name: string; lang: Lang | null }[] }>("/api/voices", { cache: "no-store" }),
+  customVoices: () => call<{ custom: SavedVoice[] }>("/api/voices", { cache: "no-store" }),
+
+  /** URL of a saved voice's stored preview. Playing it is free. */
+  voiceSampleUrl: (voiceId: string) => `/api/voices/sample?id=${encodeURIComponent(voiceId)}`,
+
+  /**
+   * Stores a preview for a saved voice: the given audio for free, or otherwise Gradium speaks the
+   * preview line once and the result is kept.
+   */
+  async storeVoiceSample(voiceId: string, audio?: Blob): Promise<void> {
+    if (!audio) guard(PRICES.ttsPerChar * 60);
+    const init: RequestInit = { method: "POST" };
+    if (audio) {
+      const form = new FormData();
+      form.append("audio", audio, "preview.wav");
+      init.body = form;
+    }
+    const res = await call<{ credits: number; mock: boolean }>(`/api/voices/sample?id=${encodeURIComponent(voiceId)}`, init);
+    if (res.credits > 0) record(OPS.preview, res.credits, res.mock);
+  },
 
   liveSession() {
     guard(LIMITS.liveSeconds * PRICES.sttPerSecond, {

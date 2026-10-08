@@ -93,6 +93,16 @@ export type CaptionStyle = {
   stage: StageBackground;
 };
 
+/** A voice saved on the Gradium account: an instant clone or a kept voice design. */
+export type SavedVoice = {
+  id: string;
+  name: string;
+  lang: Lang | null;
+  kind: "clone" | "design";
+  /** A stored preview exists, so playing it is free. */
+  hasSample: boolean;
+};
+
 /** The Gradium account's credit balance, from `GET /usages/credits`. */
 export type AccountCredits = { remaining: number; allocated: number; period: string };
 
