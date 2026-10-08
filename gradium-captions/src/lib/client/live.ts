@@ -78,6 +78,7 @@ export function browserRecognitionAvailable(): boolean {
 export class LiveCaptioner {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
+  private ownsStream = true;
   private node: AudioWorkletNode | null = null;
   private resampler: StreamResampler | null = null;
   private chunks: Float32Array[] = [];
@@ -100,22 +101,30 @@ export class LiveCaptioner {
     private readonly cb: LiveCallbacks,
   ) {}
 
+  /** `performance.now()` when audio capture began; word times count from here. */
+  captureStartedAt = 0;
+
   /** Seconds of audio captured so far. */
   get elapsed(): number {
     return this.captured / RATE;
   }
 
-  async start() {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-    });
+  /** Starts capturing. Pass a stream (e.g. the camera's) to share its microphone; the caller then owns it. */
+  async start(shared?: MediaStream) {
+    this.ownsStream = !shared;
+    this.stream =
+      shared ??
+      (await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      }));
     this.ctx = new AudioContext();
     await this.ctx.audioWorklet.addModule("/worklets/pcm-capture.js");
-    const source = this.ctx.createMediaStreamSource(this.stream);
+    const source = this.ctx.createMediaStreamSource(new MediaStream(this.stream.getAudioTracks()));
     this.node = new AudioWorkletNode(this.ctx, "pcm-capture");
     this.resampler = new StreamResampler(this.ctx.sampleRate, RATE);
     this.node.port.onmessage = (e: MessageEvent<Float32Array>) => this.onAudio(e.data);
     source.connect(this.node);
+    this.captureStartedAt = performance.now();
     this.running = true;
 
     if (this.engine === "gradium") await this.openGradium();
@@ -292,7 +301,7 @@ export class LiveCaptioner {
       }
     }
     this.node?.disconnect();
-    this.stream?.getTracks().forEach((t) => t.stop());
+    if (this.ownsStream) this.stream?.getTracks().forEach((t) => t.stop());
     await this.ctx?.close();
     const out = new Float32Array(this.captured);
     let offset = 0;

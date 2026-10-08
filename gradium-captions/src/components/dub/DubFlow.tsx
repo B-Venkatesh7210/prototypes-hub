@@ -163,6 +163,7 @@ export function DubFlow() {
         voice: cloneRef,
       };
       project.style.stage = "video";
+      project.style.position = "bottom";
       const original: Track = {
         id: uid("t"),
         lang: SOURCE,

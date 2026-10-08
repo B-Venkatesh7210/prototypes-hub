@@ -133,11 +133,13 @@ export function Segmented<T extends string>({
   options,
   onChange,
   className = "",
+  disabled = false,
 }: {
   value: T;
   options: { value: T; label: ReactNode }[];
   onChange: (value: T) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className={`flex rounded-lg border border-white/10 bg-white/[0.02] p-0.5 ${className}`}>
@@ -145,8 +147,9 @@ export function Segmented<T extends string>({
         <button
           key={o.value}
           type="button"
+          disabled={disabled}
           onClick={() => onChange(o.value)}
-          className={`flex min-h-8 flex-1 cursor-pointer items-center justify-center rounded-md px-2 font-plex text-xs transition-colors ${
+          className={`flex min-h-8 flex-1 cursor-pointer items-center justify-center rounded-md px-2 font-plex text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
             value === o.value ? "bg-white/[0.09] text-bright" : "text-lightgray hover:text-bright"
           }`}
         >

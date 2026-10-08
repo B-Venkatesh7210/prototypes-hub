@@ -270,6 +270,26 @@ export async function trimVideo(media: Blob, start: number, end: number): Promis
   }
 }
 
+/**
+ * Turns a browser recording (fragmented MP4 or WebM, often without a seek index) into a regular
+ * MP4. Streams are copied when MP4 can hold them; returns the recording unchanged if that fails.
+ */
+export async function recordingToMp4(media: Blob): Promise<Blob> {
+  if (!webCodecsSupported()) return media;
+  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(media) });
+  const output = newOutput();
+  try {
+    const conversion = await Conversion.init({ input, output });
+    if (!conversion.isValid) return media;
+    await conversion.execute();
+    return new Blob([output.target.buffer!], { type: "video/mp4" });
+  } catch {
+    return media;
+  } finally {
+    input.dispose();
+  }
+}
+
 /** Reads the uploaded video's display size and duration. */
 export async function probeVideo(media: Blob): Promise<{ width: number; height: number; duration: number } | null> {
   if (!webCodecsSupported()) return null;

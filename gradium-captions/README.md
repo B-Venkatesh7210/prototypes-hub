@@ -10,7 +10,7 @@ Three products feed one studio:
 | --- | --- | --- | --- |
 | Record once, ship in 5 | `/dub` | Upload a clip of up to 10 seconds of someone speaking English. It is transcribed, the speaker's voice is cloned (or flagship voices are used), and the clip is dubbed into up to 4 languages with karaoke captions on the video. Longer clips can be trimmed in the browser. | STT, Instant Clone, STT translation, TTS |
 | Script to voice | `/script` | Type a script, pick a flagship, designed or cloned voice, and get a voice-over with word timings. | TTS, Voice Design, Instant Clone, STT translation |
-| Live captions | `/live` | Talk into the mic and watch captions appear. When you stop, the session opens in the studio. | Realtime STT (WebSocket) |
+| Live captions | `/live` | Talk to your webcam (or just the mic) and watch captions appear on top as you speak. When you stop, the session opens in the studio with the camera video. | Realtime STT (WebSocket) |
 
 The studio (`/studio/[id]`) does the rest:
 - canvas preview with the same renderer that exports the video
@@ -23,6 +23,15 @@ The studio (`/studio/[id]`) does the rest:
 ### Dubbing
 
 Each dub starts when the original speaker starts. It is time-stretched (between 0.92× and 1.35×, pitch preserved) so it ends with the clip, and its word timings are scaled to match. If a translation is still too long at 1.35×, the studio shows how far it overruns, so you can shorten the script and regenerate. This is voice dubbing with captions, not lip sync.
+
+### Live camera
+
+The Live page records with the camera by default; "Mic only" switches back to a captions-only stage for stream overlays.
+
+- The webcam opens at the best resolution it offers (up to 4K). The preview and the project use the camera's own shape, with no aspect picker. The preview is mirrored like a selfie view; the recording isn't.
+- The raw camera video is recorded with `MediaRecorder` at a bitrate that scales with the resolution. Captions are not burned in, so they stay editable. When you stop, the recording is copied into a regular MP4 (no re-encode when the codecs allow), so the studio can seek it.
+- The studio project uses the video's own sound as the live track, and shifts the caption timings by the gap between the start of the recording and the start of audio capture, so captions stay in sync.
+- Captions sit at the bottom center over video (camera sessions and dubs), so they don't cover faces. The Live page and the studio both have a Top / Middle / Bottom control; exports follow it.
 
 ### Video export
 

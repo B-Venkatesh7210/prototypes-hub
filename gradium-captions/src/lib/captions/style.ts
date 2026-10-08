@@ -38,6 +38,18 @@ export function aspectSize(aspect: Aspect) {
   return ASPECTS.find((a) => a.id === aspect) ?? ASPECTS[0];
 }
 
+/** The app aspect closest to a video's own frame. */
+export function nearestAspect(width: number, height: number): Aspect {
+  const ratio = width / height;
+  return ASPECTS.reduce((best, a) => (Math.abs(Math.log(a.width / a.height / ratio)) < Math.abs(Math.log(best.width / best.height / ratio)) ? a : best)).id;
+}
+
+/** Vertical text-only canvases center captions; over video they stay low so faces stay clear. */
+function defaultPosition(style: CaptionStyle, aspect: Aspect): CaptionStyle["position"] {
+  if (style.stage === "video") return style.position;
+  return aspect === "9:16" ? "middle" : style.position;
+}
+
 export const DEFAULT_STYLE: CaptionStyle = {
   preset: "signal",
   fontId: "inter-tight",
@@ -149,7 +161,7 @@ export function applyPreset(style: CaptionStyle, presetId: string): CaptionStyle
   const preset = PRESETS.find((p) => p.id === presetId);
   if (!preset) return style;
   const next = { ...style, ...preset.style, preset: presetId };
-  if (style.aspect === "9:16") return { ...next, maxWordsPerLine: Math.min(next.maxWordsPerLine, 3), position: "middle" };
+  if (style.aspect === "9:16") return { ...next, maxWordsPerLine: Math.min(next.maxWordsPerLine, 3), position: defaultPosition(next, "9:16") };
   return next;
 }
 
@@ -160,6 +172,6 @@ export function styleForAspect(style: CaptionStyle, aspect: Aspect): CaptionStyl
     aspect,
     maxWordsPerLine: vertical ? Math.min(style.maxWordsPerLine, 3) : style.maxWordsPerLine,
     maxCharsPerLine: vertical ? Math.min(style.maxCharsPerLine || 22, 22) : style.maxCharsPerLine,
-    position: aspect === "9:16" ? "middle" : style.position,
+    position: defaultPosition(style, aspect),
   };
 }
