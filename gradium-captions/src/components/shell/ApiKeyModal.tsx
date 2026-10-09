@@ -29,9 +29,11 @@ export function ApiKeyButton() {
           <span className="font-code text-xs">API key {maskKey(key)}</span>
         </button>
       ) : (
-        <button type="button" onClick={() => setOpen(true)} className={buttonClass("primary", "md")}>
-          Add API key
-        </button>
+        <span className="key-attention">
+          <button type="button" onClick={() => setOpen(true)} className={buttonClass("primary", "md", "border-transparent!")}>
+            Add API key
+          </button>
+        </span>
       )}
       {open ? createPortal(<ApiKeyModal current={key} onClose={() => setOpen(false)} />, document.body) : null}
     </>

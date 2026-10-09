@@ -200,6 +200,34 @@ input[type="color"]::-webkit-color-swatch {
   animation: pulse-ring 1.4s ease-out infinite;
 }
 
+@property --key-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes key-border-spin {
+  to {
+    --key-angle: 360deg;
+  }
+}
+
+/* A light that runs around the "Add API key" button until a key is saved. */
+.key-attention {
+  display: inline-flex;
+  padding: 1.5px;
+  border-radius: calc(0.5rem + 1.5px);
+  background: conic-gradient(
+    from var(--key-angle),
+    transparent 0deg 210deg,
+    var(--color-cyan) 290deg,
+    #ffffff 330deg,
+    transparent 360deg
+  );
+  box-shadow: 0 0 18px rgba(145, 255, 250, 0.28);
+  animation: key-border-spin 2.4s linear infinite;
+}
+
 .wavy-review {
   text-decoration: underline wavy #ffb592;
   text-underline-offset: 4px;
@@ -209,7 +237,8 @@ input[type="color"]::-webkit-color-swatch {
 @media (prefers-reduced-motion: reduce) {
   .animate-banner-marquee,
   .striped,
-  .rec-pulse {
+  .rec-pulse,
+  .key-attention {
     animation: none;
   }
 }
