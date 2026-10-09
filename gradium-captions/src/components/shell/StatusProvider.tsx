@@ -9,9 +9,11 @@ import {
   LEDGER_EVENT,
   readLedger,
   refreshAccount,
+  resetAccount,
   setSpendsCredits,
   type LedgerEntry,
 } from "@/lib/client/api";
+import { KEY_CHANGED_EVENT } from "@/lib/client/apiKey";
 import { LIMITS } from "@/lib/limits";
 import type { AccountCredits, ServiceStatus } from "@/lib/types";
 
@@ -20,6 +22,8 @@ type Budget = { live: number; mock: number };
 type StatusValue = {
   status: ServiceStatus | null;
   isMock: boolean;
+  /** Live mode without a key: nothing works until the visitor adds their Gradium API key. */
+  needsKey: boolean;
   ledger: LedgerEntry[];
   /** Credits left in today's demo budget, real and simulated. */
   budget: Budget;
@@ -34,6 +38,7 @@ const FULL: Budget = { live: LIMITS.dailyCredits, mock: LIMITS.dailyCredits };
 const StatusContext = createContext<StatusValue>({
   status: null,
   isMock: true,
+  needsKey: false,
   ledger: [],
   budget: FULL,
   account: null,
@@ -53,7 +58,7 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
       .then((next) => {
         setSpendsCredits(next.mode === "live");
         setStatus(next);
-        if (next.mode === "live") void refreshAccount();
+        if (next.mode === "live" && next.hasKey) void refreshAccount();
       })
       .catch(() => setStatus({ mode: "mock", hasKey: false, host: "api" }));
   }, []);
@@ -65,11 +70,17 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
       setBudget({ live: budgetLeft(false), mock: budgetLeft(true) });
     };
     const syncAccount = () => setAccount(currentAccount());
+    const onKey = () => {
+      resetAccount();
+      refresh();
+    };
     sync();
+    window.addEventListener(KEY_CHANGED_EVENT, onKey);
     window.addEventListener(LEDGER_EVENT, sync);
     window.addEventListener("storage", sync);
     window.addEventListener(ACCOUNT_EVENT, syncAccount);
     return () => {
+      window.removeEventListener(KEY_CHANGED_EVENT, onKey);
       window.removeEventListener(LEDGER_EVENT, sync);
       window.removeEventListener("storage", sync);
       window.removeEventListener(ACCOUNT_EVENT, syncAccount);
@@ -79,7 +90,16 @@ export function StatusProvider({ children }: { children: React.ReactNode }) {
   const reloadAccount = useCallback(() => void refreshAccount(), []);
 
   const value = useMemo(
-    () => ({ status, isMock: status?.mode !== "live", ledger, budget, account, refresh, refreshAccount: reloadAccount }),
+    () => ({
+      status,
+      isMock: status?.mode !== "live",
+      needsKey: status?.mode === "live" && !status.hasKey,
+      ledger,
+      budget,
+      account,
+      refresh,
+      refreshAccount: reloadAccount,
+    }),
     [status, ledger, budget, account, refresh, reloadAccount],
   );
   return <StatusContext.Provider value={value}>{children}</StatusContext.Provider>;

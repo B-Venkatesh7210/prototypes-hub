@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const SESSION_CREDITS = LIMITS.liveSeconds * PRICES.sttPerSecond;
 
 export async function POST(req: Request) {
-  return respond(async () => {
+  return respond(req, async () => {
     guardCredits(req, SESSION_CREDITS);
     quota.liveSession(req);
     const session = await liveSession();

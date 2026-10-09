@@ -1,9 +1,9 @@
 import { LIMITS } from "@/lib/limits";
-import { GradiumError, isLive } from "./gradium/config";
+import { apiKey, GradiumError, isLive, keyFingerprint } from "./gradium/config";
 import { logSpend, primeBalance } from "./ledger";
 
 /**
- * Per-visitor quotas for live mode. In-memory on purpose: this is a demo server, and a restart
+ * Per-account quotas for live mode, keyed by a fingerprint of the visitor's API key. In-memory on purpose: this is a demo server, and a restart
  * resetting the counters is fine. Mock mode never spends credits, so nothing is counted there.
  */
 type Visitor = { day: string; credits: number; events: Record<string, number[]> };
@@ -18,6 +18,8 @@ function today() {
 }
 
 function visitorId(req: Request): string {
+  const key = keyFingerprint();
+  if (key) return `key:${key}`;
   return req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
 }
 
@@ -35,11 +37,12 @@ function visitor(req: Request): Visitor {
 /** Rejects the request if it would push this visitor past the daily credit budget. */
 export function guardCredits(req: Request, estimate: number) {
   if (!isLive()) return;
+  apiKey();
   primeBalance();
   const v = visitor(req);
   if (v.credits + estimate > LIMITS.dailyCredits) {
     throw new GradiumError(
-      `This demo allows ${LIMITS.dailyCredits.toLocaleString()} Gradium credits per visitor per day, and this request would go over. Try again tomorrow.`,
+      `This demo allows ${LIMITS.dailyCredits.toLocaleString()} Gradium credits per API key per day, and this request would go over. Try again tomorrow.`,
       429,
     );
   }
@@ -55,6 +58,7 @@ export function spend(req: Request, credits: number, op: string, opts?: { reconc
 
 function take(req: Request, key: string, max: number, windowMs: number, message: string) {
   if (!isLive()) return;
+  apiKey();
   primeBalance();
   const v = visitor(req);
   const now = Date.now();

@@ -22,7 +22,7 @@ export async function GET(req: Request) {
  * user already heard; anything else speaks the preview line once in that voice with Gradium.
  */
 export async function POST(req: Request) {
-  return respond(async () => {
+  return respond(req, async () => {
     const id = new URL(req.url).searchParams.get("id");
     if (!validVoiceId(id)) throw new GradiumError("Invalid voice id.", 400);
     const voice = (await customVoices()).find((v) => v.id === id);

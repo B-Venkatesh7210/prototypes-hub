@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/client/api";
+import { getApiKey, subscribeToKey } from "@/lib/client/apiKey";
 import { LIMITS } from "@/lib/limits";
 import type { SavedVoice } from "@/lib/types";
 import { useStatus } from "@/components/shell/StatusProvider";
 
 /** Clones and kept designs on the Gradium account (or the mock list in mock mode). */
 export function useSavedVoices() {
-  const { isMock } = useStatus();
+  const { status } = useStatus();
+  const key = useSyncExternalStore(subscribeToKey, getApiKey, () => null);
+  const canLoad = status?.mode === "mock" || (status?.mode === "live" && !!key);
   const [voices, setVoices] = useState<SavedVoice[] | null>(null);
   const [error, setError] = useState("");
 
@@ -27,18 +30,19 @@ export function useSavedVoices() {
   }, []);
 
   useEffect(() => {
+    if (!canLoad) return;
     let current = true;
     void apply(api.customVoices(), () => current);
     return () => {
       current = false;
     };
-  }, [apply, isMock]);
+  }, [apply, canLoad, key]);
 
   const reload = useCallback(() => apply(api.customVoices()), [apply]);
-  const clones = voices?.filter((v) => v.kind === "clone") ?? [];
+  const clones = (canLoad ? voices : [])?.filter((v) => v.kind === "clone") ?? [];
 
   return {
-    voices,
+    voices: canLoad ? voices : [],
     error,
     reload,
     clones,

@@ -2,15 +2,18 @@ import { isLang } from "@/lib/langs";
 import type { Lang } from "@/lib/types";
 import { decodeWav } from "@/lib/wav";
 import { GradiumError } from "./gradium";
+import { withRequestKey } from "./gradium/config";
 
-export async function respond<T>(work: () => Promise<T>): Promise<Response> {
+/** Runs a route with the visitor's API key in scope and turns errors into JSON. */
+export async function respond<T>(req: Request, work: () => Promise<T>): Promise<Response> {
   try {
-    return Response.json(await work());
+    return Response.json(await withRequestKey(req, work));
   } catch (err) {
     const status = err instanceof GradiumError ? err.status : 500;
     const message = err instanceof Error ? err.message : "Unexpected error";
-    console.error("[gradium-captions]", message);
-    return Response.json({ error: message }, { status });
+    const code = err instanceof GradiumError ? err.code : undefined;
+    if (code !== "needs_key") console.error("[gradium-captions]", message);
+    return Response.json({ error: message, code }, { status });
   }
 }
 

@@ -1,6 +1,6 @@
 import type { AccountCredits } from "@/lib/types";
 import { credits } from "./gradium";
-import { isLive } from "./gradium/config";
+import { isLive, keyFingerprint } from "./gradium/config";
 
 /**
  * Logs every credit-spending call to the server console and checks it against the real Gradium
@@ -10,7 +10,15 @@ import { isLive } from "./gradium/config";
 type Pending = { op: string; estimate: number };
 type State = { balance?: number; pending: Pending[]; timer?: ReturnType<typeof setTimeout> };
 
-const state = ((globalThis as { __gradiumLedger?: State }).__gradiumLedger ??= { pending: [] });
+/** One ledger per API key, so visitors' balances never get compared against each other. */
+const ledgers = ((globalThis as { __gradiumLedgers?: Map<string, State> }).__gradiumLedgers ??= new Map());
+
+function ledger(): State {
+  const id = keyFingerprint() ?? "none";
+  let state = ledgers.get(id);
+  if (!state) ledgers.set(id, (state = { pending: [] }));
+  return state;
+}
 
 /** Gradium bills after a call finishes; give it a moment before reading the balance. */
 const SETTLE_MS = 2500;
@@ -18,6 +26,7 @@ const TAG = "\x1b[36m[credits]\x1b[0m";
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 export async function accountBalance(): Promise<AccountCredits | null> {
+  const state = ledger();
   const account = await credits();
   if (account && !state.pending.length) state.balance = account.remaining;
   return account;
@@ -25,13 +34,14 @@ export async function accountBalance(): Promise<AccountCredits | null> {
 
 /** Reads the balance before the first spend so there is something to compare against. */
 export function primeBalance() {
-  if (!isLive() || state.balance !== undefined) return;
+  if (!isLive() || ledger().balance !== undefined) return;
   void accountBalance().catch(() => undefined);
 }
 
 export function logSpend(op: string, estimate: number, budgetLeft: number, opts: { reconcile?: boolean } = {}) {
   console.info(`${TAG} ${op}: −${fmt(estimate)} estimated · demo budget ${fmt(budgetLeft)} left`);
   if (opts.reconcile === false) return;
+  const state = ledger();
   state.pending.push({ op, estimate });
   clearTimeout(state.timer);
   state.timer = setTimeout(() => void reconcile(), SETTLE_MS);
@@ -43,7 +53,9 @@ function summarize(batch: Pending[]) {
   return [...counts].map(([op, n]) => (n > 1 ? `${op} ×${n}` : op)).join(", ");
 }
 
+/** Runs from a timer scheduled inside the request, so the visitor's key is still in scope. */
 async function reconcile() {
+  const state = ledger();
   const batch = state.pending.splice(0);
   if (!batch.length) return;
   const before = state.balance;

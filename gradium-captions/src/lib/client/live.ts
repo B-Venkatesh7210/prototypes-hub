@@ -164,7 +164,7 @@ export class LiveCaptioner {
 
   private async openGradium() {
     const session = await api.liveSession();
-    if (session.mode !== "live") throw new Error("Gradium realtime needs live mode (GRADIUM_MODE=live and an API key).");
+    if (session.mode !== "live") throw new Error("Gradium realtime needs the server in live mode (GRADIUM_MODE=live).");
     const url = new URL(session.url);
     url.searchParams.set("token", session.token);
     this.cb.onStatus("Connecting to Gradium realtime Speech-to-Text…");

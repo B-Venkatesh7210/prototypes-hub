@@ -75,7 +75,7 @@ All limits are in `src/lib/limits.ts`. Size limits apply in both modes. Daily qu
 | Live | 60 s per take (auto-stop), 5 Gradium takes an hour |
 | Re-voice | lines of up to 25 words, 10 per project |
 | Voices | clone samples capped at 15 s, 3 cloned voices per account (lifetime, no delete), 3 voice designs (2 candidates each) a day |
-| Budget | 5,000 credits a day per browser, and the same per visitor IP on the server |
+| Budget | 5,000 credits a day per API key, tracked in the browser and on the server |
 
 The server enforces its own caps too: 12 s for STT, 65 s for translation, 30 s for clone samples and 700 characters for TTS. It returns 413 when a request is too long and 429 when a quota is used up.
 
@@ -83,15 +83,22 @@ The credit meter in the nav counts down from 5,000 (a simulated budget in mock m
 
 A 10-second clip dubbed into 4 languages costs about 30 (STT) + 4 × (40 translation + ~160 TTS) ≈ 830 credits.
 
-To use real Gradium, copy `.env.example` to `.env.local`:
+To use real Gradium, copy `.env.example` to `.env.local` and switch the server to live mode:
 
 ```bash
-GRADIUM_API_KEY=gd_...
 GRADIUM_MODE=live
 GRADIUM_HOST=api     # api | eu.api | us.api
 ```
 
-The API key never reaches the browser. Live captions use a short-lived single-use token from `/api/live/session`.
+## Bring your own API key
+
+In live mode, each visitor uses their own Gradium account. **Add API key** in the nav opens a dialog where they paste a key. **Get API key** in that dialog opens [Gradium Studio](https://studio.gradium.ai/) to create one. Until a key is added, every call that would use Gradium returns 401 with `code: "needs_key"`, and the dialog opens on its own.
+
+- The key is checked with Gradium (`POST /api/key/check`, free) before it is saved.
+- It is stored in the browser only: localStorage with "Remember on this device", otherwise sessionStorage. Each API call sends it in the `x-gradium-key` header. The server uses it for that request and never stores or logs it.
+- In live mode, a key in the server's env is **not** used as a fallback for visitors. The only exception is `npm run previews`, which runs outside a request.
+- Daily limits, the credit ledger and the balance check are kept per key (a short hash of the key, never the key itself).
+- Live captions still use a short-lived single-use token from `/api/live/session`, so the key never reaches Gradium's WebSocket from the browser.
 
 ## Voice previews
 

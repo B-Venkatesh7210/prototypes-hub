@@ -12,17 +12,24 @@ import type {
   TranslateResult,
   TtsResult,
 } from "@/lib/types";
+import { KEY_HEADER } from "@/lib/key";
 import { LIMITS, PRICES } from "@/lib/limits";
+import { getApiKey, keyId, NEEDS_KEY_EVENT } from "./apiKey";
 
 const LEDGER_KEY = "gradium-captions:credits";
 export const LEDGER_EVENT = "gradium-captions:credits";
 
 export type LedgerEntry = { at: number; op: string; credits: number; mock: boolean };
 
+/** Each API key keeps its own history, so its daily demo budget is tracked separately. */
+function ledgerKey() {
+  return `${LEDGER_KEY}:${keyId(getApiKey())}`;
+}
+
 export function readLedger(): LedgerEntry[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(LEDGER_KEY) || "[]") as LedgerEntry[];
+    return JSON.parse(localStorage.getItem(ledgerKey()) || "[]") as LedgerEntry[];
   } catch {
     return [];
   }
@@ -30,7 +37,7 @@ export function readLedger(): LedgerEntry[] {
 
 function record(op: string, credits: number, mock: boolean) {
   const entries = [...readLedger(), { at: Date.now(), op, credits, mock }].slice(-500);
-  localStorage.setItem(LEDGER_KEY, JSON.stringify(entries));
+  localStorage.setItem(ledgerKey(), JSON.stringify(entries));
   window.dispatchEvent(new Event(LEDGER_EVENT));
   logSpend(op, credits, mock);
 }
@@ -50,6 +57,16 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 
 export function currentAccount(): AccountCredits | null {
   return account;
+}
+
+/** Forgets the balance and pending comparisons, e.g. when the API key changes. */
+export function resetAccount() {
+  account = null;
+  baseline = null;
+  pending = [];
+  clearTimeout(settleTimer);
+  window.dispatchEvent(new Event(ACCOUNT_EVENT));
+  window.dispatchEvent(new Event(LEDGER_EVENT));
 }
 
 /** Reads the real Gradium balance through the server. Costs no credits. */
@@ -169,14 +186,20 @@ const wavSeconds = (wav: Blob) => Math.max(0, wav.size - 44) / 48000;
 
 /** Clears the history. Today's live spending stays, so clearing never refills the daily budget. */
 export function clearLedger() {
-  localStorage.setItem(LEDGER_KEY, JSON.stringify(realEntries(null, DAY)));
+  localStorage.setItem(ledgerKey(), JSON.stringify(realEntries(null, DAY)));
   window.dispatchEvent(new Event(LEDGER_EVENT));
 }
 
 async function call<T>(url: string, init: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+  const headers = new Headers(init.headers);
+  const key = getApiKey();
+  if (key && !headers.has(KEY_HEADER)) headers.set(KEY_HEADER, key);
+  const res = await fetch(url, { ...init, headers });
+  const body = (await res.json().catch(() => ({}))) as T & { error?: string; code?: string };
+  if (!res.ok) {
+    if (body.code === "needs_key") window.dispatchEvent(new Event(NEEDS_KEY_EVENT));
+    throw new Error(body.error || `Request failed (${res.status})`);
+  }
   return body;
 }
 
@@ -187,6 +210,13 @@ function tracked<T extends { credits: number; mock: boolean }>(op: string, resul
 
 export const api = {
   status: () => call<ServiceStatus>("/api/status", { cache: "no-store" }),
+
+  /** Validates a key with Gradium before it is saved. Costs no credits. */
+  checkKey: (key: string) =>
+    call<{ mode: "live" | "mock"; account: AccountCredits | null }>("/api/key/check", {
+      method: "POST",
+      headers: { [KEY_HEADER]: key.trim() },
+    }),
 
   async transcribe(wav: Blob, language: Lang, keywords: string): Promise<SttResult> {
     guard(Math.ceil(wavSeconds(wav) * PRICES.sttPerSecond));

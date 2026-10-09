@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { clearLedger } from "@/lib/client/api";
 import { LIMITS } from "@/lib/limits";
-import { buttonClass, Pill } from "@/components/ui/primitives";
+import { Pill } from "@/components/ui/primitives";
 import { ArrowRight } from "@/components/ui/icons";
+import { ApiKeyButton } from "./ApiKeyModal";
 import { useStatus } from "./StatusProvider";
 
 export function GradiumLogo({ className = "h-5 w-[92px]" }: { className?: string }) {
@@ -30,14 +31,14 @@ export function GradiumLogo({ className = "h-5 w-[92px]" }: { className?: string
 }
 
 export function Banner() {
-  const { status, isMock } = useStatus();
+  const { status, isMock, needsKey } = useStatus();
   const message = !status
     ? "Connecting to the Gradium provider…"
     : isMock
-      ? status.hasKey
-        ? "Mock mode: a key is set but GRADIUM_MODE isn't \"live\", so no credits are spent."
-        : "Mock mode: every Gradium call is simulated on this machine. Zero credits used."
-      : `Live mode: connected to ${status.host}.gradium.ai. Every call spends credits.`;
+      ? "Mock mode: every Gradium call is simulated on this machine. Zero credits used."
+      : needsKey
+        ? "Add your Gradium API key to start. Every call runs on your own account."
+        : `Live mode: connected to ${status.host}.gradium.ai with your API key. Every call spends your credits.`;
   return (
     <div className="relative z-50 flex h-11 w-full shrink-0 items-center gap-2 overflow-hidden bg-[#f7f8f8] p-1 md:justify-center md:gap-3">
       <div className="flex min-w-0 flex-1 overflow-hidden md:flex-none md:overflow-visible">
@@ -213,14 +214,7 @@ export function Nav() {
           </nav>
           <div className="flex items-center gap-3">
             <CreditMeter />
-            <a
-              href="https://studio.gradium.ai/"
-              target="_blank"
-              rel="noreferrer"
-              className={buttonClass("primary", "md", "hidden sm:inline-flex")}
-            >
-              Get API key
-            </a>
+            <ApiKeyButton />
           </div>
         </div>
       </div>

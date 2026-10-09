@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  return respond(async () => {
+  return respond(req, async () => {
     const body = (await req.json()) as {
       action?: "generate" | "keep";
       prompt?: unknown;

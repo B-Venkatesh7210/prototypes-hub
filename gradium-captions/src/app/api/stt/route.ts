@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  return respond(async () => {
+  return respond(req, async () => {
     const form = await req.formData();
     const wav = await fileBytes(form, "audio", 5);
     const seconds = requireAudioLength(wav, LIMITS.server.sttSeconds);

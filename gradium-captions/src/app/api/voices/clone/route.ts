@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  return respond(async () => {
+  return respond(req, async () => {
     const form = await req.formData();
     if (form.get("consent") !== "yes") throw new GradiumError("Voice cloning needs the speaker's consent.", 400);
     const wav = await fileBytes(form, "audio", 10);
