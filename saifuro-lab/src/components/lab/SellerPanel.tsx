@@ -7,7 +7,7 @@ import { CheckList, InfoTip, Panel, Pill, SectionLabel, short, time, VerdictBadg
 type SellerEvent = LabState["seller"][number];
 
 export function SellerPanel({ state }: { state: LabState }) {
-  const events = state.seller;
+  const events = [...state.seller].reverse();
   return (
     <Panel
       kicker="Seller · x402 resource server"
