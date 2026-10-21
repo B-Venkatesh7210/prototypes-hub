@@ -86,7 +86,7 @@ export async function runScenario(s: LabSession, id: ScenarioId) {
       const m = await org.revokeMandate(s.mandate);
       say(s, { role: "step", tone: "warn", tag: "revoked", text: m.mandate, detail: "The operator revoked the mandate. Nothing changed in the agent's code or wallet." });
       await buy(s, "spot-prices");
-      note(s, "Issue a new mandate in the Saifuro panel to resume");
+      note(s, "Issue a new mandate to resume");
       return;
     }
     case "replay": {

@@ -51,8 +51,8 @@ export function Lab() {
   }, [refresh, fast]);
 
   return (
-    <main className="mx-auto flex max-w-[1440px] flex-col px-6 lg:h-[calc(100dvh-4rem)] lg:min-h-[760px]">
-      <section className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5 pb-6 pt-8">
+    <main className="mx-auto max-w-[1440px] px-6 pb-12">
+      <section className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5 pb-6 pt-7">
         <div>
           <div className="kicker">Saifuro × x402 · Base Sepolia</div>
           <h1 className="mt-2 text-[34px] font-semibold leading-[1.1] tracking-[-0.035em] text-ink">An agent with a wallet, under a mandate.</h1>
@@ -74,13 +74,15 @@ export function Lab() {
       )}
 
       {state ? (
-        <div className="grid min-h-0 flex-1 gap-4 pb-6 lg:grid-cols-[1.12fr_1fr_1fr]">
+        <>
           <AgentPanel state={state} post={post} />
-          <SaifuroPanel state={state} post={post} />
-          <SellerPanel state={state} post={post} />
-        </div>
+          <div className="mt-4 grid gap-4 lg:h-[640px] lg:grid-cols-2">
+            <SaifuroPanel state={state} post={post} />
+            <SellerPanel state={state} />
+          </div>
+        </>
       ) : (
-        <div className="mb-6 grid min-h-96 flex-1 place-items-center rounded-md border border-line bg-surface text-sm text-muted">
+        <div className="grid min-h-96 place-items-center rounded-md border border-line bg-surface text-sm text-muted">
           {error ? "Could not load the lab." : "Starting the lab…"}
         </div>
       )}

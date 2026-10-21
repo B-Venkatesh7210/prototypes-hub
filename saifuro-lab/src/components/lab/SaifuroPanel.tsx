@@ -77,6 +77,9 @@ export function SaifuroPanel({ state, post }: { state: LabState; post: Post }) {
                   </div>
                 </div>
               )}
+              <p className="mt-3 text-[12px] text-faint">
+                Saifuro rule: more than 10 decisions in 60 seconds is denied with <span className="font-mono">deny_velocity</span>. Applies to every mandate.
+              </p>
             </>
           ) : (
             <p className="text-[13px] text-muted">No mandate.</p>

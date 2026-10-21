@@ -1,16 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { SCENARIOS, type ScenarioId } from "@/lib/lab/scenario-list";
 import type { LabState } from "@/lib/lab/state";
-import { CheckList, InfoTip, Panel, Pill, SectionLabel, short, Tip, time, VerdictBadge } from "../ui";
-import type { Post } from "./Lab";
-
-const ATTACKS = (Object.keys(SCENARIOS) as ScenarioId[]).filter((id) => SCENARIOS[id].side === "seller");
+import { CheckList, InfoTip, Panel, Pill, SectionLabel, short, time, VerdictBadge } from "../ui";
 
 type SellerEvent = LabState["seller"][number];
 
-export function SellerPanel({ state, post }: { state: LabState; post: Post }) {
+export function SellerPanel({ state }: { state: LabState }) {
   const events = state.seller;
   return (
     <Panel
@@ -18,26 +14,6 @@ export function SellerPanel({ state, post }: { state: LabState; post: Post }) {
       title="Market data API"
       info="GET /api/seller/data/:id. Before it settles a payment, the seller runs the 12 verification steps of draft-dias-agent-payment-verdicts. No valid verdict, no settlement."
     >
-      <div className="border-b border-line px-5 py-4">
-        <SectionLabel info="Each attack reuses a real approval from this session. Hover one to see what it does; the pill is the step that should stop it.">
-          Attack the seller
-        </SectionLabel>
-        <div className="grid grid-cols-3 gap-2">
-          {ATTACKS.map((id) => (
-            <Tip key={id} content={SCENARIOS[id].blurb} className="w-full">
-              <button
-                disabled={!!state.busy}
-                onClick={() => void post("/api/lab/run", { scenario: id })}
-                className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-line px-3 text-left transition hover:border-deny/40 hover:bg-deny-soft/60 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <span className="text-[13.5px] font-medium text-ink">{SCENARIOS[id].title}</span>
-                <span className="font-mono text-[11px] text-faint">{SCENARIOS[id].expect.replace("step ", "#")}</span>
-              </button>
-            </Tip>
-          ))}
-        </div>
-      </div>
-
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <SectionLabel right={<span className="font-mono text-[11.5px] text-faint">{events.length}</span>}>Paid requests</SectionLabel>
         {events.length === 0 ? (

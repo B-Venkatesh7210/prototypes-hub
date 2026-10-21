@@ -43,7 +43,7 @@ function narrate(s: LabSession, e: SpendEvent) {
       say(s, {
         role: "note",
         tone: "warn",
-        text: "Waiting for approval in the Saifuro panel",
+        text: "Waiting for approval",
         detail: `Held for ${e.decision.review?.waits_for}. A review stays open for 24 hours; the agent stops waiting after 3 minutes.`,
       });
       break;

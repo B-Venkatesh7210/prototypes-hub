@@ -3,22 +3,412 @@
 import { useEffect, useRef, useState } from "react";
 import { SCENARIOS, type ScenarioId } from "@/lib/lab/scenario-list";
 import type { LabState } from "@/lib/lab/state";
-import { Button, InfoTip, Panel, Pill, SectionLabel, Tip, time, VerdictBadge, type Tone } from "../ui";
+import { Button, InfoTip, Pill, time, VerdictBadge, type Tone } from "../ui";
+import { GUIDES, phaseStatuses, type Actor, type Msg, type Phase, type PhaseStatus } from "./guide";
 import type { Post } from "./Lab";
 
-const AGENT_SCENARIOS = (Object.keys(SCENARIOS) as ScenarioId[]).filter((id) => SCENARIOS[id].side === "agent");
+const IDS = Object.keys(SCENARIOS) as ScenarioId[];
+const GROUPS: { label: string; info: string; ids: ScenarioId[] }[] = [
+  { label: "Agent edge cases", info: "Saifuro stops these before anything is signed. The seller never hears about them.", ids: IDS.filter((id) => SCENARIOS[id].side === "agent") },
+  { label: "Attacks on the seller", info: "Saifuro already said allow. Only the seller, verifying the verdict, can catch these.", ids: IDS.filter((id) => SCENARIOS[id].side === "seller") },
+];
 
 const SUGGESTIONS = ["What are BTC and ETH trading at?", "Compare stablecoin supply by chain.", "Get me the institutional flows report."];
 
-const NOTE_BORDER: Record<string, string> = { ok: "border-allow", warn: "border-review", bad: "border-deny", info: "border-line-strong" };
+type View = ScenarioId | "ask";
 
-type Message = LabState["messages"][number];
+const label = (id: ScenarioId) => `${SCENARIOS[id].side === "seller" ? "Attack" : "Run"}: ${SCENARIOS[id].title}`;
+
+/** The latest run of a scenario: everything after its user message, up to the next one. */
+function lastRun(messages: Msg[], id: ScenarioId): { at: string; msgs: Msg[] } | null {
+  const want = label(id);
+  let start = -1;
+  for (let i = messages.length - 1; i >= 0; i--)
+    if (messages[i].role === "user" && messages[i].text === want) {
+      start = i;
+      break;
+    }
+  if (start < 0) return null;
+  let end = messages.length;
+  for (let j = start + 1; j < messages.length; j++)
+    if (messages[j].role === "user") {
+      end = j;
+      break;
+    }
+  return { at: messages[start].at, msgs: messages.slice(start + 1, end) };
+}
+
+function initialView(messages: Msg[]): View {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== "user") continue;
+    const id = IDS.find((x) => label(x) === messages[i].text);
+    return id ?? "ask";
+  }
+  return "research";
+}
 
 export function AgentPanel({ state, post }: { state: LabState; post: Post }) {
+  const [view, setView] = useState<View>(() => initialView(state.messages));
+  const m = state.mandate;
+
+  return (
+    <section className="flex flex-col overflow-hidden rounded-md border border-line bg-surface lg:h-[calc(100dvh-14rem)] lg:min-h-[640px]">
+      <header className="flex min-h-[68px] flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-3">
+        <div className="min-w-0">
+          <div className="kicker">Buyer</div>
+          <div className="mt-0.5 flex items-center gap-2">
+            <h2 className="text-[17px] font-semibold tracking-[-0.015em] text-ink">Research agent</h2>
+            <span className="font-mono text-[12px] text-faint">{state.agent}</span>
+            <InfoTip content="An AI agent with a Base Sepolia wallet. It pays per request over x402, and only after Saifuro allows the payment." />
+          </div>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          {m && (
+            <span className="flex items-center gap-2 rounded-md border border-line bg-subtle px-2.5 py-1.5 text-[12.5px] text-body">
+              <span className="kicker !text-[11px]">Mandate</span>
+              <span className="font-mono text-ink">
+                {m.limits.per_transaction}/purchase · {m.limits.per_month}/30d · review &gt; {m.review_above} · {m.categories.join(", ")}
+              </span>
+              <Pill tone={m.status === "active" ? "ok" : "bad"}>{m.status}</Pill>
+            </span>
+          )}
+          {state.busy && (
+            <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-review">
+              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-review" />
+              Running {state.busy}
+            </span>
+          )}
+          <Button size="sm" onClick={() => void post("/api/lab/reset", {})} disabled={!!state.busy}>
+            Reset
+          </Button>
+        </div>
+      </header>
+
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[300px_1fr]">
+        <nav className="scroll-thin min-h-0 overflow-y-auto border-b border-line py-3 lg:border-b-0 lg:border-r">
+          {GROUPS.map((g) => (
+            <div key={g.label} className="mb-3">
+              <div className="flex items-center gap-2 px-5 pb-1.5 pt-1">
+                <span className="kicker">{g.label}</span>
+                <InfoTip content={g.info} />
+              </div>
+              {g.ids.map((id) => (
+                <NavItem key={id} id={id} n={IDS.indexOf(id) + 1} active={view === id} running={state.busy === SCENARIOS[id].title} ran={!!lastRun(state.messages, id)} onClick={() => setView(id)} />
+              ))}
+            </div>
+          ))}
+          <div className="px-5 pb-1.5 pt-1">
+            <span className="kicker">Free-form</span>
+          </div>
+          <button
+            onClick={() => setView("ask")}
+            className={`w-full px-5 py-2.5 text-left transition ${view === "ask" ? "bg-subtle shadow-[inset_2px_0_0_#0f1e33]" : "hover:bg-subtle/60"}`}
+          >
+            <div className="text-[14px] font-medium text-ink">Ask the agent</div>
+            <div className="mt-0.5 text-[12px] text-muted">Your own question, and the full activity log</div>
+          </button>
+        </nav>
+
+        <div className="min-h-0 min-w-0">
+          {view === "ask" ? <AskView state={state} post={post} /> : <ScenarioView key={view} id={view} state={state} post={post} />}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function NavItem({ id, n, active, running, ran, onClick }: { id: ScenarioId; n: number; active: boolean; running: boolean; ran: boolean; onClick: () => void }) {
+  const s = SCENARIOS[id];
+  return (
+    <button onClick={onClick} className={`w-full px-5 py-2.5 text-left transition ${active ? "bg-subtle shadow-[inset_2px_0_0_#0f1e33]" : "hover:bg-subtle/60"}`}>
+      <div className="flex items-center gap-2.5">
+        <span className="font-mono text-[11.5px] text-faint">{String(n).padStart(2, "0")}</span>
+        <span className="text-[14px] font-medium text-ink">{s.title}</span>
+        {running ? <span className="pulse-dot ml-auto h-1.5 w-1.5 rounded-full bg-review" /> : ran && <span className="ml-auto text-[12px] text-allow">✓</span>}
+      </div>
+      <div className="mt-1 flex items-center gap-2 pl-[1.6rem]">
+        <span className="text-[12px] text-muted">{GUIDES[id].edge}</span>
+        {s.side === "agent" ? <VerdictBadge verdict={s.expect} /> : <Pill mono>{s.expect}</Pill>}
+      </div>
+    </button>
+  );
+}
+
+function ScenarioView({ id, state, post }: { id: ScenarioId; state: LabState; post: Post }) {
+  const s = SCENARIOS[id];
+  const g = GUIDES[id];
+  const run = lastRun(state.messages, id);
+  const running = state.busy === s.title;
+  const statuses = phaseStatuses(g.phases, run?.msgs ?? null, running, running && state.pendingReviews.length > 0);
+  const activeIdx = statuses.findIndex((x) => x.status === "active" || x.status === "waiting");
+  const nodes = useRef<(HTMLLIElement | null)[]>([]);
+  const revoked = state.mandate?.status !== "active";
+
+  useEffect(() => {
+    if (activeIdx >= 0) nodes.current[activeIdx]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeIdx]);
+
+  return (
+    <div className="scroll-thin h-full overflow-y-auto">
+      <div className="border-b border-line px-7 pb-6 pt-6">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          <div className="min-w-0 flex-1">
+            <div className="kicker">
+              {s.side === "agent" ? "Agent edge case" : "Attack on the seller"} · {g.edge}
+            </div>
+            <h3 className="mt-1.5 text-[26px] font-semibold leading-tight tracking-[-0.025em] text-ink">{s.title}</h3>
+          </div>
+          <div className="flex items-center gap-3">
+            {run && !running && <span className="text-[12.5px] text-muted">Last run {time(run.at)}</span>}
+            <Button variant="primary" disabled={!!state.busy} onClick={() => void post("/api/lab/run", { scenario: id })}>
+              {running ? "Running…" : run ? "Run again" : "Run scenario"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2">
+          <Explain label="What we're testing">{g.goal}</Explain>
+          <Explain label="Why it matters">{g.why}</Explain>
+        </div>
+        <div className="mt-4 flex items-start gap-3 rounded-md border border-line bg-subtle/70 px-4 py-3">
+          <span className="kicker mt-0.5 shrink-0">Expected</span>
+          <span className="text-[14px] text-ink">{g.expect}</span>
+        </div>
+
+        {state.busy && !running && <Banner tone="info">The agent is busy with {state.busy}. You can read this one while it finishes.</Banner>}
+        {revoked && id !== "revoke" && s.side === "agent" && (
+          <Banner tone="bad" action={<NewMandate post={post} />}>
+            The mandate is revoked, so every purchase will be denied with deny_revoked.
+          </Banner>
+        )}
+      </div>
+
+      <div className="px-7 py-6">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="kicker">{run ? "What happened" : "What will happen"}</span>
+          <InfoTip content="Each step fills in live as the run progresses: the real transcript events, with times, verdicts and Base Sepolia transactions." />
+        </div>
+        <ol>
+          {g.phases.map((p, i) => (
+            <li
+              key={i}
+              ref={(el) => {
+                nodes.current[i] = el;
+              }}
+            >
+              <PhaseRow
+                phase={p}
+                n={i + 1}
+                last={i === g.phases.length - 1}
+                status={statuses[i].status}
+                events={statuses[i].events}
+                action={
+                  statuses[i].status === "waiting" ? (
+                    p.action === "review" ? (
+                      <ReviewActions state={state} post={post} />
+                    ) : revoked ? (
+                      <div className="mt-3">
+                        <NewMandate post={post} />
+                      </div>
+                    ) : null
+                  ) : null
+                }
+              />
+            </li>
+          ))}
+        </ol>
+        {g.after && <Banner tone="info">{g.after}</Banner>}
+      </div>
+    </div>
+  );
+}
+
+function Explain({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="kicker">{label}</div>
+      <p className="mt-1.5 text-[14.5px] leading-relaxed text-body">{children}</p>
+    </div>
+  );
+}
+
+function Banner({ tone, children, action }: { tone: "info" | "bad"; children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div
+      className={`mt-4 flex flex-wrap items-center gap-3 rounded-md border px-4 py-2.5 text-[13.5px] ${tone === "bad" ? "border-deny/25 bg-deny-soft text-deny" : "border-accent/20 bg-accent-soft text-accent"}`}
+    >
+      <span className="flex-1">{children}</span>
+      {action}
+    </div>
+  );
+}
+
+function NewMandate({ post }: { post: Post }) {
+  return (
+    <Button size="sm" variant="primary" onClick={() => void post("/api/lab/mandate", { action: "new" })}>
+      Issue a new mandate
+    </Button>
+  );
+}
+
+function ReviewActions({ state, post }: { state: LabState; post: Post }) {
+  const d = state.pendingReviews[0];
+  if (!d?.review) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-review/30 bg-review-soft px-4 py-3">
+      <span className="text-[13.5px] text-ink">
+        <b className="font-semibold">{d.request.amount} USDC</b> for {d.request.category} · <span className="font-mono text-[12px] text-muted">{d.review.review}</span>
+      </span>
+      <span className="ml-auto flex gap-2">
+        <Button size="sm" variant="primary" onClick={() => void post("/api/lab/review", { review: d.review!.review, action: "approve" })}>
+          Approve
+        </Button>
+        <Button size="sm" variant="danger" onClick={() => void post("/api/lab/review", { review: d.review!.review, action: "deny" })}>
+          Deny
+        </Button>
+      </span>
+    </div>
+  );
+}
+
+const WHO: Record<Actor, { label: string; cls: string }> = {
+  agent: { label: "Agent", cls: "bg-ink/[0.06] text-ink" },
+  saifuro: { label: "Saifuro", cls: "bg-accent-soft text-accent" },
+  seller: { label: "Seller", cls: "border border-line-strong bg-surface text-body" },
+  you: { label: "You", cls: "bg-review-soft text-review" },
+  operator: { label: "Operator", cls: "bg-review-soft text-review" },
+  attacker: { label: "Attacker", cls: "bg-deny-soft text-deny" },
+};
+
+const NODE_DONE: Record<Tone, string> = {
+  ok: "border-allow bg-allow text-white",
+  warn: "border-review bg-review text-white",
+  bad: "border-deny bg-deny text-white",
+  info: "border-ink bg-ink text-white",
+  neutral: "border-ink bg-ink text-white",
+};
+
+/** The outcome colour of a step: its most decisive event. */
+function outcome(events: Msg[]): Tone {
+  const tones = events
+    .filter((e) => e.role === "step")
+    .map((e) => e.tone ?? "info")
+    .reverse();
+  return tones.find((t) => t !== "info") ?? "info";
+}
+
+function PhaseRow({ phase, n, last, status, events, action }: { phase: Phase; n: number; last: boolean; status: PhaseStatus; events: Msg[]; action: React.ReactNode }) {
+  const tone = outcome(events);
+  const node =
+    status === "done"
+      ? NODE_DONE[tone]
+      : status === "active"
+        ? "border-review bg-surface text-review ring-4 ring-review/15"
+        : status === "waiting"
+          ? "border-review bg-review-soft text-review ring-4 ring-review/15"
+          : status === "skipped"
+            ? "border-dashed border-line-strong bg-surface text-faint"
+            : "border-line-strong bg-surface text-faint";
+  const icon = status === "done" ? (tone === "bad" ? "✕" : tone === "warn" ? "!" : "✓") : status === "skipped" ? "–" : n;
+  const who = WHO[phase.who];
+
+  return (
+    <div className="grid grid-cols-[2rem_1fr] gap-x-4">
+      <div className="flex flex-col items-center">
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 font-mono text-[12.5px] font-semibold transition ${node}`}>{icon}</span>
+        {!last && <span className={`w-0.5 flex-1 ${status === "done" ? "bg-ink/25" : "bg-line"}`} />}
+      </div>
+      <div className={`min-w-0 ${last ? "pb-1" : "pb-7"}`}>
+        <div className="flex min-h-8 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className={`rounded px-2 py-[3px] text-[11.5px] font-medium leading-none ${who.cls}`}>{who.label}</span>
+          <span className={`text-[15.5px] font-semibold tracking-[-0.01em] ${status === "pending" || status === "skipped" ? "text-body" : "text-ink"}`}>{phase.title}</span>
+          <StatusNote status={status} optional={phase.optional} />
+        </div>
+        <p className={`mt-1 max-w-[72ch] text-[14px] leading-relaxed ${status === "skipped" ? "text-faint" : "text-body"}`}>{phase.explain}</p>
+        {events.length > 0 && <Events events={events} />}
+        {action}
+      </div>
+    </div>
+  );
+}
+
+function StatusNote({ status, optional }: { status: PhaseStatus; optional?: boolean }) {
+  if (status === "active")
+    return (
+      <span className="flex items-center gap-1.5 text-[12px] font-medium text-review">
+        <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-review" />
+        in progress
+      </span>
+    );
+  if (status === "waiting") return <span className="text-[12px] font-medium text-review">waiting for you</span>;
+  if (status === "skipped") return <span className="text-[12px] text-faint">{optional ? "skipped: reused an earlier purchase" : "didn't happen"}</span>;
+  return null;
+}
+
+function Events({ events }: { events: Msg[] }) {
+  const [all, setAll] = useState(false);
+  const many = events.length > 5;
+  const shown = many && !all ? events.slice(-3) : events;
+  const counts = many ? Object.entries(events.reduce<Record<string, number>>((acc, e) => ({ ...acc, [e.tag ?? e.role]: (acc[e.tag ?? e.role] ?? 0) + 1 }), {})) : [];
+
+  return (
+    <div className="mt-3 max-w-[760px] space-y-2">
+      {many && (
+        <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+          {counts.map(([t, c]) => (
+            <Pill key={t} mono tone={t === "allow" || t === "settled" || t === "served" ? "ok" : t.startsWith("deny") || t === "stopped" ? "bad" : "neutral"}>
+              {t} ×{c}
+            </Pill>
+          ))}
+          <button onClick={() => setAll((a) => !a)} className="font-medium text-accent hover:underline">
+            {all ? "Show fewer" : `Show all ${events.length}`}
+          </button>
+        </div>
+      )}
+      <div className="divide-y divide-line overflow-hidden rounded-md border border-line">
+        {shown.map((e) => (
+          <EventRow key={e.id} e={e} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EventRow({ e }: { e: Msg }) {
+  if (e.role === "agent")
+    return (
+      <div className="flex items-start gap-2 bg-surface px-4 py-3 text-[14px] leading-relaxed text-ink">
+        <span className="whitespace-pre-wrap">{e.text}</span>
+        {e.detail && <InfoTip content={e.detail} />}
+      </div>
+    );
+  return (
+    <div className="grid grid-cols-[4rem_auto_1fr] items-center gap-x-3 bg-surface px-3.5 py-2 text-[13px]">
+      <span className="font-mono text-[11.5px] text-faint">{time(e.at)}</span>
+      {e.role === "note" ? (
+        <Pill tone={e.tone === "warn" ? "warn" : "neutral"}>note</Pill>
+      ) : (
+        <Pill tone={e.tone ?? "info"} mono className="min-w-[3.25rem] justify-center">
+          {e.tag ?? "step"}
+        </Pill>
+      )}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-body">
+        <span className="min-w-0 break-words">{e.text}</span>
+        {e.link && (
+          <a href={e.link.href} target="_blank" rel="noreferrer" className="shrink-0 font-mono text-accent hover:underline">
+            {e.link.label} ↗
+          </a>
+        )}
+        {e.detail && <InfoTip content={e.detail} />}
+      </span>
+    </div>
+  );
+}
+
+function AskView({ state, post }: { state: LabState; post: Post }) {
   const [prompt, setPrompt] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const count = state.messages.length;
-  const m = state.mandate;
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -30,81 +420,35 @@ export function AgentPanel({ state, post }: { state: LabState; post: Post }) {
   };
 
   return (
-    <Panel
-      kicker="Buyer"
-      title={
-        <>
-          Research agent <span className="ml-1 font-mono text-[12px] font-normal text-faint">{state.agent}</span>
-        </>
-      }
-      info="An AI agent with a Base Sepolia wallet. It pays per request over x402, and only after Saifuro allows the payment."
-      actions={
-        <>
-          {state.busy && (
-            <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-review">
-              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-review" />
-              Running
-            </span>
-          )}
-          <Button size="sm" onClick={() => void post("/api/lab/reset", {})} disabled={!!state.busy}>
-            Reset
-          </Button>
-        </>
-      }
-    >
-      <div className="border-b border-line px-5 py-4">
-        <SectionLabel info="Each one sends real requests through Saifuro and the seller. Hover a scenario to see what it shows; the pill is the verdict to expect.">
-          Scenarios
-        </SectionLabel>
-        <div className="grid grid-cols-3 gap-2">
-          {AGENT_SCENARIOS.map((id) => (
-            <Tip key={id} content={SCENARIOS[id].blurb} className="w-full">
-              <button
-                disabled={!!state.busy}
-                onClick={() => void post("/api/lab/run", { scenario: id })}
-                className="flex w-full flex-col items-start gap-1.5 rounded-md border border-line px-3 py-2.5 text-left transition hover:border-faint hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <span className="text-[13.5px] font-medium leading-tight text-ink">{SCENARIOS[id].title}</span>
-                <VerdictBadge verdict={SCENARIOS[id].expect} />
-              </button>
-            </Tip>
-          ))}
-        </div>
+    <div className="flex h-full min-h-[420px] flex-col">
+      <div className="border-b border-line px-7 py-5">
+        <div className="kicker">Free-form</div>
+        <h3 className="mt-1.5 text-[22px] font-semibold tracking-[-0.02em] text-ink">Ask the agent</h3>
+        <p className="mt-1 text-[14px] text-body">The model decides what to buy. The mandate decides whether it may pay. Below is the full activity log, scenarios included.</p>
       </div>
-
-      <div ref={scroller} className="scroll-thin min-h-64 flex-1 space-y-2.5 overflow-y-auto px-5 py-4 lg:min-h-0">
+      <div ref={scroller} className="scroll-thin min-h-0 flex-1 space-y-2.5 overflow-y-auto px-7 py-5">
         {count === 0 ? (
-          <div className="grid h-full place-items-center text-center">
-            <div>
-              <p className="text-[14px] text-body">Run a scenario, or ask the agent something it has to pay to answer.</p>
-              {m && (
-                <p className="mt-2 font-mono text-[12px] text-faint">
-                  mandate: {m.limits.per_transaction}/purchase · {m.limits.per_month}/30d · {m.categories.join(", ")}
-                </p>
-              )}
-            </div>
-          </div>
+          <p className="pt-10 text-center text-[14px] text-muted">Nothing yet. Ask something the agent has to pay to answer.</p>
         ) : (
           state.messages.map((msg) => <Line key={msg.id} m={msg} />)
         )}
       </div>
-
       <form
-        className="border-t border-line px-5 py-3.5"
+        className="border-t border-line px-7 py-4"
         onSubmit={(e) => {
           e.preventDefault();
           void ask(prompt);
         }}
       >
-        {state.status.ai.enabled && count === 0 && (
-          <div className="mb-2.5 flex flex-wrap gap-1.5">
+        {state.status.ai.enabled && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => void ask(s)}
                 disabled={!!state.busy}
-                className="rounded-full border border-line px-3 py-1 text-[12.5px] text-body transition hover:border-faint hover:text-ink"
+                className="rounded-full border border-line px-3 py-1 text-[12.5px] text-body transition hover:border-faint hover:text-ink disabled:opacity-40"
               >
                 {s}
               </button>
@@ -125,18 +469,19 @@ export function AgentPanel({ state, post }: { state: LabState; post: Post }) {
           </Button>
         </div>
       </form>
-    </Panel>
+    </div>
   );
 }
 
-function Line({ m }: { m: Message }) {
+const NOTE_BORDER: Record<string, string> = { ok: "border-allow", warn: "border-review", bad: "border-deny", info: "border-line-strong" };
+
+function Line({ m }: { m: Msg }) {
   if (m.role === "user")
     return (
       <div className="slide-in flex justify-end pt-1.5">
         <div className="max-w-[85%] rounded-md bg-ink px-3 py-1.5 text-[13.5px] font-medium text-white">{m.text}</div>
       </div>
     );
-
   if (m.role === "agent")
     return (
       <div className="slide-in flex max-w-[94%] items-start gap-2 rounded-md border border-line bg-subtle px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink">
@@ -144,7 +489,6 @@ function Line({ m }: { m: Message }) {
         {m.detail && <InfoTip content={m.detail} />}
       </div>
     );
-
   if (m.role === "note")
     return (
       <div className={`slide-in flex items-center gap-2 border-l-2 py-0.5 pl-3 text-[12.5px] text-body ${NOTE_BORDER[m.tone ?? "info"]}`}>
@@ -152,12 +496,10 @@ function Line({ m }: { m: Message }) {
         {m.detail && <InfoTip content={m.detail} />}
       </div>
     );
-
-  const tone: Tone = m.tone ?? "info";
   return (
     <div className="slide-in grid grid-cols-[3.75rem_auto_1fr] items-center gap-x-2.5 text-[12.5px]">
       <span className="font-mono text-[11.5px] text-faint">{time(m.at)}</span>
-      <Pill tone={tone} mono className="min-w-[3.25rem] justify-center">
+      <Pill tone={m.tone ?? "info"} mono className="min-w-[3.25rem] justify-center">
         {m.tag ?? "step"}
       </Pill>
       <span className="flex min-w-0 items-center gap-2 text-body">
