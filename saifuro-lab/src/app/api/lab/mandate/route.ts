@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const org = await orgClient();
     if (body.action === "revoke") {
       const m = await org.revokeMandate(s.mandate);
-      say(s, { role: "step", tone: "warn", text: `Operator revoked ${m.mandate}. Takes effect on the next request.` });
+      say(s, { role: "step", tone: "warn", tag: "revoked", text: m.mandate, detail: "Takes effect on the agent's next request." });
       return Response.json(m);
     }
     if (body.action === "new") {
@@ -37,7 +37,9 @@ export async function POST(req: Request) {
       say(s, {
         role: "step",
         tone: "ok",
-        text: `New mandate ${m.mandate}: ${m.limits.per_transaction} USDC per purchase, ${m.limits.per_month} per 30 days, review above ${m.review_above}, categories ${m.categories.join(", ")}. ${previous} stays in the log, revoked.`,
+        tag: "mandate",
+        text: `${m.mandate} · ${m.limits.per_transaction}/purchase · ${m.limits.per_month}/30d · ${m.categories.join(", ")}`,
+        detail: `Review above ${m.review_above} USDC. Mandates can't be edited, so ${previous} was revoked and stays in the log.`,
       });
       return Response.json(m);
     }

@@ -87,6 +87,30 @@ async function requirementsFor(d: Dataset, payTo: string): Promise<PaymentRequir
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => Response.json(body, { status, headers });
 
+let settling: Promise<unknown> = Promise.resolve();
+
+/**
+ * The public facilitator rejects settlements that arrive in parallel, so they go one at a time, with one retry.
+ * A retry can't double-charge: an EIP-3009 authorization is single-use on-chain.
+ */
+function settleSerially(server: x402ResourceServer, ...args: Parameters<x402ResourceServer["settlePayment"]>): Promise<SettleResponse> {
+  const attempt = () => server.settlePayment(...args).catch((e: Error): SettleResponse => ({ success: false, errorReason: e.message, transaction: "", network: NETWORK }));
+  const run = settling.then(async () => {
+    const first = await attempt();
+    if (first.success) return first;
+    await new Promise((r) => setTimeout(r, 1500));
+    return attempt();
+  });
+  settling = run.catch(() => {});
+  return run;
+}
+
+/** RPC errors arrive with the request body attached; the first line is the useful part. */
+const brief = (msg: string) => {
+  const line = msg.split("\n")[0].trim();
+  return line.length > 140 ? `${line.slice(0, 139)}…` : line;
+};
+
 export async function handlePaidRequest(req: Request, id: string): Promise<Response> {
   const d = datasetById(id);
   if (!d) return json(404, { error: "unknown dataset" });
@@ -142,24 +166,25 @@ export async function handlePaidRequest(req: Request, id: string): Promise<Respo
       if (!match) throw new Error("payment does not match this resource's requirements");
       const verified = await server.verifyPayment(payload, match);
       if (!verified.isValid) throw new Error(verified.invalidMessage || verified.invalidReason || "payment invalid");
-      settle = await server.settlePayment(payload, match);
+      settle = await settleSerially(server, payload, match);
       if (!settle.success) throw new Error(settle.errorMessage || settle.errorReason || "settlement failed");
     } else {
       const auth = (payload.payload as { authorization?: { from?: string } }).authorization;
       settle = { success: true, transaction: "", network: NETWORK, payer: auth?.from };
     }
   } catch (err) {
+    const message = brief((err as Error).message);
     const e = record({
       dataset: d.id,
       price: d.price,
       ...who,
       checks: v.checks,
       outcome: "rejected",
-      reason: `payment: ${(err as Error).message}`,
-      payment: { status: "failed", error: (err as Error).message },
+      reason: `payment: ${message}`,
+      payment: { status: "failed", error: message },
       label,
     });
-    return json(402, { error: "payment_failed", message: (err as Error).message, checks: v.checks, event: e });
+    return json(402, { error: "payment_failed", message, checks: v.checks, event: e });
   }
 
   const data = await deliver(d.id).catch((err: Error) => ({ error: `source unavailable: ${err.message}` }));

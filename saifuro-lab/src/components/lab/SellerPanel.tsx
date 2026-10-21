@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { SCENARIOS, type ScenarioId } from "@/lib/lab/scenario-list";
 import type { LabState } from "@/lib/lab/state";
-import { CheckList, Panel, short, time, VerdictBadge } from "../ui";
+import { CheckList, InfoTip, Panel, Pill, SectionLabel, short, Tip, time, VerdictBadge } from "../ui";
 import type { Post } from "./Lab";
 
 const ATTACKS = (Object.keys(SCENARIOS) as ScenarioId[]).filter((id) => SCENARIOS[id].side === "seller");
@@ -13,35 +13,41 @@ type SellerEvent = LabState["seller"][number];
 export function SellerPanel({ state, post }: { state: LabState; post: Post }) {
   const events = state.seller;
   return (
-    <Panel kicker="Seller · x402 resource server" title="Market data API" actions={<span className="font-mono text-[11px] text-dim">GET /api/seller/data/:id</span>}>
-      <div className="border-b border-line p-3">
-        <div className="mb-2 text-[11px] text-dim">Attack the seller with a real approval from this session:</div>
-        <div className="grid grid-cols-3 gap-1.5">
+    <Panel
+      kicker="Seller · x402 resource server"
+      title="Market data API"
+      info="GET /api/seller/data/:id. Before it settles a payment, the seller runs the 12 verification steps of draft-dias-agent-payment-verdicts. No valid verdict, no settlement."
+    >
+      <div className="border-b border-line px-5 py-4">
+        <SectionLabel info="Each attack reuses a real approval from this session. Hover one to see what it does; the pill is the step that should stop it.">
+          Attack the seller
+        </SectionLabel>
+        <div className="grid grid-cols-3 gap-2">
           {ATTACKS.map((id) => (
-            <button
-              key={id}
-              disabled={!!state.busy}
-              onClick={() => void post("/api/lab/run", { scenario: id })}
-              title={SCENARIOS[id].blurb}
-              className="rounded-lg border border-deny/25 bg-deny/5 p-2 text-left transition hover:border-deny/50 hover:bg-deny/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] font-medium text-bright">{SCENARIOS[id].title}</span>
-                <span className="font-mono text-[10px] text-dim">{SCENARIOS[id].expect}</span>
-              </div>
-              <p className="mt-0.5 text-[11px] leading-snug text-muted">{SCENARIOS[id].blurb}</p>
-            </button>
+            <Tip key={id} content={SCENARIOS[id].blurb} className="w-full">
+              <button
+                disabled={!!state.busy}
+                onClick={() => void post("/api/lab/run", { scenario: id })}
+                className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-line px-3 text-left transition hover:border-deny/40 hover:bg-deny-soft/60 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="text-[13.5px] font-medium text-ink">{SCENARIOS[id].title}</span>
+                <span className="font-mono text-[11px] text-faint">{SCENARIOS[id].expect.replace("step ", "#")}</span>
+              </button>
+            </Tip>
           ))}
         </div>
       </div>
-      <div className="scroll-thin flex-1 space-y-2 overflow-y-auto p-4">
+
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <SectionLabel right={<span className="font-mono text-[11.5px] text-faint">{events.length}</span>}>Paid requests</SectionLabel>
         {events.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line p-4 text-center text-xs leading-relaxed text-dim">
-            Paid requests land here. For each one the seller runs the 12 verification steps of draft-dias-agent-payment-verdicts, then settles the x402 payment and
-            serves the data. No valid verdict, no settlement.
-          </div>
+          <p className="rounded-md border border-dashed border-line-strong px-4 py-5 text-center text-[13px] text-muted">No paid requests yet.</p>
         ) : (
-          events.map((e, i) => <EventRow key={e.id} e={e} defaultOpen={i === 0} explorer={state.status.explorer} />)
+          <ul className="divide-y divide-line overflow-hidden rounded-md border border-line">
+            {events.map((e, i) => (
+              <EventRow key={e.id} e={e} defaultOpen={i === 0} explorer={state.status.explorer} />
+            ))}
+          </ul>
         )}
       </div>
     </Panel>
@@ -53,55 +59,65 @@ function EventRow({ e, defaultOpen, explorer }: { e: SellerEvent; defaultOpen: b
   const shown = open ?? defaultOpen;
   const failed = e.checks?.find((c) => c.status === "fail");
   const ok = e.outcome === "delivered";
+  const p = e.payment;
+  const status = ok ? "200 served" : p?.status === "failed" ? "402 not settled" : "403 refused";
+
   return (
-    <div className={`slide-in rounded-lg border ${ok ? "border-line" : "border-deny/30"} bg-raised/40`}>
-      <button onClick={() => setOpen(!shown)} className="w-full px-3 py-2 text-left">
-        <div className="flex items-center gap-2">
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${ok ? "bg-allow/12 text-allow" : "bg-deny/12 text-deny"}`}>{ok ? "200 served" : e.payment?.status === "failed" ? "402 not settled" : "403 refused"}</span>
-          <span className="truncate text-sm font-medium text-bright">{e.label ?? e.dataset}</span>
-          <span className="font-mono text-xs text-dim">{e.price} USDC</span>
-          <span className="ml-auto font-mono text-[11px] text-dim">{time(e.at)}</span>
-          <span className={`text-dim transition-transform ${shown ? "rotate-90" : ""}`}>›</span>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted">
-          {e.verdict && <VerdictBadge verdict={e.verdict} className="!text-[10px]" />}
-          {failed ? (
-            <span className="text-deny">
-              Step {failed.step} · {failed.name}: {failed.detail}
-            </span>
-          ) : (
-            e.reason && <span>{e.reason}</span>
-          )}
-        </div>
+    <li className="slide-in bg-surface">
+      <button onClick={() => setOpen(!shown)} className="flex w-full items-center gap-2.5 px-3 pb-1 pt-2.5 text-left transition hover:bg-subtle" aria-expanded={shown}>
+        <span className="font-mono text-[11.5px] text-faint">{time(e.at)}</span>
+        <Pill tone={ok ? "ok" : "bad"} mono>
+          {status}
+        </Pill>
+        <span className="truncate text-[13px] font-medium text-ink">{e.label ?? e.dataset}</span>
+        <span className="shrink-0 font-mono text-[12px] text-muted">{e.price} USDC</span>
+        <span className={`ml-auto text-faint transition-transform ${shown ? "rotate-90" : ""}`}>›</span>
       </button>
-      {shown && (
-        <div className="space-y-2 border-t border-line p-3">
-          {e.checks && <CheckList checks={e.checks} dense />}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2.5 text-[12.5px]">
+        {e.verdict && <VerdictBadge verdict={e.verdict} />}
+        {failed ? (
+          <span className="text-deny">
+            step {failed.step} · {failed.name}: {failed.detail}
+          </span>
+        ) : (
           <Payment e={e} explorer={explorer} />
+        )}
+      </div>
+      {shown && e.checks && (
+        <div className="border-t border-line bg-subtle/50 px-3 py-3">
+          <CheckList checks={e.checks} dense />
+          {p?.payer && <p className="mt-2 font-mono text-[11.5px] text-faint">payer {p.payer}</p>}
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
 function Payment({ e, explorer }: { e: SellerEvent; explorer: string }) {
   const p = e.payment;
-  if (!p) return null;
-  const text = {
-    settled: "Settled on Base Sepolia",
-    simulated: "Settlement simulated: the buyer wallet has no testnet USDC",
-    failed: `Settlement failed: ${p.error ?? "facilitator error"}`,
-    not_attempted: "Payment never submitted to the facilitator: the verdict failed first",
-  }[p.status];
-  return (
-    <div className={`flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5 text-[11.5px] ${p.status === "settled" ? "bg-allow/8 text-allow" : p.status === "failed" ? "bg-deny/8 text-deny" : "bg-bg text-muted"}`}>
-      <span>{text}</span>
-      {p.transaction && (
-        <a href={`${explorer}/tx/${p.transaction}`} target="_blank" rel="noreferrer" className="font-mono text-info hover:underline">
-          {short(p.transaction, 10, 6)} ↗
-        </a>
-      )}
-      {p.payer && <span className="ml-auto font-mono text-dim">from {short(p.payer)}</span>}
-    </div>
-  );
+  if (!p) return e.reason ? <span className="text-muted">{e.reason}</span> : null;
+  if (p.status === "settled")
+    return (
+      <span className="flex items-center gap-1.5 text-allow">
+        Settled on Base Sepolia
+        {p.transaction && (
+          <a
+            href={`${explorer}/tx/${p.transaction}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-accent hover:underline"
+          >
+            {short(p.transaction, 8, 6)} ↗
+          </a>
+        )}
+      </span>
+    );
+  if (p.status === "simulated")
+    return (
+      <span className="flex items-center gap-1.5 text-muted">
+        Settlement simulated <InfoTip content="The buyer wallet had no test USDC, so the seller skipped the facilitator." />
+      </span>
+    );
+  if (p.status === "failed") return <span className="text-deny">Settlement failed: {p.error ?? "facilitator error"}</span>;
+  return <span className="text-muted">Not submitted for settlement</span>;
 }

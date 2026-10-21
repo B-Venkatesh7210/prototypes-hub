@@ -15,6 +15,8 @@ export type Message = {
   role: "user" | "agent" | "step" | "note";
   text: string;
   tone?: Tone;
+  /** Short label shown as a pill on step lines: "402", "allow", "signed", "settled"… */
+  tag?: string;
   link?: { href: string; label: string };
   detail?: string;
 };

@@ -1,45 +1,53 @@
 @import "tailwindcss";
 
+/* Saifuro's palette: navy ink, slate body text, hairline blue-grey borders, one blue accent. */
 @theme {
-  --color-bg: #0a0b0d;
-  --color-surface: #111317;
-  --color-raised: #171a1f;
-  --color-line: #23272e;
-  --color-line-strong: #323844;
-  --color-text: #e7e9ee;
-  --color-muted: #9aa1ad;
-  --color-dim: #6b7280;
-  --color-bright: #ffffff;
-  --color-allow: #3ddc97;
-  --color-review: #f5b84b;
-  --color-deny: #ff6b6b;
-  --color-info: #7aa7ff;
-  --color-accent: #c7f36b;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-bg: #f7fafd;
+  --color-surface: #ffffff;
+  --color-subtle: #f2f6fa;
+  --color-line: #e3eaf2;
+  --color-line-strong: #d7e1ec;
+  --color-ink: #0f1e33;
+  --color-body: #44576f;
+  --color-muted: #6e87a6;
+  --color-faint: #8296ac;
+  --color-accent: #1355b4;
+  --color-accent-soft: #e8f1fb;
+  --color-allow: #0e7a4e;
+  --color-allow-soft: #e5f4ec;
+  --color-review: #9a5b00;
+  --color-review-soft: #fdf3e1;
+  --color-deny: #b42318;
+  --color-deny-soft: #fdecea;
+  --font-sans: var(--font-geist), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-text);
+  background:
+    radial-gradient(1100px 420px at 0% 0%, #e4eef9 0%, rgb(228 238 249 / 0) 70%),
+    var(--color-bg);
+  background-repeat: no-repeat;
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-.grid-bg {
-  background-image:
-    linear-gradient(to right, rgb(255 255 255 / 0.025) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(255 255 255 / 0.025) 1px, transparent 1px);
-  background-size: 32px 32px;
+.kicker {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-faint);
 }
 
 .scroll-thin {
   scrollbar-width: thin;
-  scrollbar-color: #2a2f38 transparent;
+  scrollbar-color: #d7e1ec transparent;
 }
 
 @keyframes pulse-dot {
@@ -59,7 +67,7 @@ body {
 @keyframes slide-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -68,7 +76,7 @@ body {
 }
 
 .slide-in {
-  animation: slide-in 0.25s ease-out;
+  animation: slide-in 0.2s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

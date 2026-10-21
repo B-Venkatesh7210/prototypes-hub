@@ -4,14 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Decision } from "@/kit/client.ts";
 import type { LabState } from "@/lib/lab/state";
-import { Button, CopyButton, decodeJwt, Json, Panel, short, time, VerdictBadge } from "../ui";
+import { Button, CopyButton, decodeJwt, InfoTip, Json, Panel, Pill, SectionLabel, short, time, VerdictBadge } from "../ui";
 import type { Post } from "./Lab";
 
-export const VERDICT_MEANING: Record<string, string> = {
+const VERDICT_MEANING: Record<string, string> = {
   allow: "Within the mandate. The token is good for 5 minutes.",
-  review: "Above review_above. Waits up to 24 hours for the mandate's principal.",
-  deny_limit: "Over the per-transaction limit, or the rolling 30-day total.",
-  deny_velocity: "10 or more decisions for this agent in the last 60 seconds.",
+  review: "Above review_above. Waits up to 24 hours for the mandate's approver.",
+  deny_limit: "Over the per-purchase limit, or the rolling 30-day total.",
+  deny_velocity: "More than 10 decisions for this agent in 60 seconds.",
   deny_category: "The category isn't on the mandate's allowed list.",
   deny_expired: "The mandate passed its expiry date.",
   deny_revoked: "An operator revoked the mandate.",
@@ -28,112 +28,117 @@ export function SaifuroPanel({ state, post }: { state: LabState; post: Post }) {
     <Panel
       kicker="Authorization"
       title="Saifuro"
-      actions={<span className="rounded bg-raised px-1.5 py-0.5 font-mono text-[11px] text-muted">mode: enforce</span>}
+      info="Saifuro decides; it doesn't move money or block anything itself. In enforce mode the buyer refuses to sign on anything but allow, and the seller refuses to settle without a valid verdict."
+      actions={<Pill mono>mode: enforce</Pill>}
     >
-      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-4">
-        {/* Mandate */}
-        <div className="rounded-lg border border-line bg-raised/50 p-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-dim">Mandate</span>
-            <span className="font-mono text-xs text-bright">{m?.mandate ?? "none"}</span>
-            {m && (
-              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${m.status === "active" ? "bg-allow/12 text-allow" : "bg-deny/12 text-deny"}`}>{m.status}</span>
-            )}
-            <div className="ml-auto flex gap-1.5">
-              {m?.status === "active" && (
-                <Button size="sm" tone="danger" disabled={!!state.busy} onClick={() => void post("/api/lab/mandate", { action: "revoke" })}>
-                  Revoke
+      <div className="scroll-thin min-h-0 flex-1 divide-y divide-line overflow-y-auto">
+        <section className="px-5 py-4">
+          <SectionLabel
+            info="The operator's rules for this agent. Mandates can't be edited, only revoked and replaced."
+            right={
+              <div className="flex gap-2">
+                {m?.status === "active" && (
+                  <Button size="sm" variant="danger" disabled={!!state.busy} onClick={() => void post("/api/lab/mandate", { action: "revoke" })}>
+                    Revoke
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => setEditing((e) => !e)}>
+                  {editing ? "Cancel" : "New mandate"}
                 </Button>
-              )}
-              <Button size="sm" onClick={() => setEditing((e) => !e)}>
-                {editing ? "Cancel" : "New mandate"}
-              </Button>
-            </div>
-          </div>
-          {m && (
+              </div>
+            }
+          >
+            Mandate
+          </SectionLabel>
+          {m ? (
             <>
-              <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <Limit label="Per purchase" value={`${m.limits.per_transaction} USDC`} />
-                <Limit label="Per 30 days" value={`${m.limits.per_month ?? "–"} USDC`} />
-                <Limit label="Review above" value={m.review_above !== undefined ? `${m.review_above} USDC` : "–"} />
-                <Limit label="Categories" value={m.categories.join(", ")} />
-                <Limit label="Approver" value={m.principal} />
-                <Limit label="Expires" value={m.expires} />
+              <div className="mb-3 flex items-center gap-2">
+                <span className="font-mono text-[13px] text-ink">{m.mandate}</span>
+                <Pill tone={m.status === "active" ? "ok" : "bad"}>{m.status}</Pill>
+              </div>
+              <dl className="grid grid-cols-3 gap-x-4 gap-y-3">
+                <Field label="Per purchase" value={`${m.limits.per_transaction} USDC`} />
+                <Field label="Per 30 days" value={`${m.limits.per_month ?? "–"} USDC`} />
+                <Field label="Review above" value={m.review_above !== undefined ? `${m.review_above} USDC` : "–"} />
+                <Field label="Categories" value={m.categories.join(", ")} />
+                <Field label="Approver" value={m.principal.replace("role:", "")} />
+                <Field label="Expires" value={m.expires} />
               </dl>
               {cap > 0 && (
-                <div className="mt-3">
-                  <div className="flex justify-between text-[11px] text-dim">
-                    <span>Allowed in the last 30 days</span>
-                    <span className="font-mono text-muted">
+                <div className="mt-4">
+                  <div className="flex justify-between text-[12px]">
+                    <span className="text-muted">Allowed in the last 30 days</span>
+                    <span className="font-mono text-body">
                       {spent.toFixed(3)} / {cap} USDC
                     </span>
                   </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-bg">
-                    <div className="h-full rounded-full bg-allow transition-all" style={{ width: `${Math.min(100, (spent / cap) * 100)}%` }} />
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-subtle">
+                    <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(100, (spent / cap) * 100)}%` }} />
                   </div>
                 </div>
               )}
             </>
+          ) : (
+            <p className="text-[13px] text-muted">No mandate.</p>
           )}
           {editing && <MandateForm onSubmit={async (v) => (await post("/api/lab/mandate", { action: "new", ...v })) && setEditing(false)} />}
-        </div>
+        </section>
 
-        {/* Reviews */}
         {state.pendingReviews.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-review">Waiting for you</h3>
-            {state.pendingReviews.map((d) => (
-              <div key={d.decision} className="slide-in rounded-lg border border-review/40 bg-review/8 p-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-semibold text-bright">{d.request.amount} USDC</span>
-                  <span className="text-xs text-muted">{d.request.category}</span>
-                  <span className="ml-auto font-mono text-[11px] text-dim">{d.review?.review}</span>
+          <section className="bg-review-soft/60 px-5 py-4">
+            <SectionLabel info="Approving issues a fresh allow that supersedes the review. Denying issues nothing.">Needs your approval</SectionLabel>
+            <div className="space-y-2">
+              {state.pendingReviews.map((d) => (
+                <div key={d.decision} className="slide-in rounded-md border border-review/30 bg-surface p-3.5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[18px] font-semibold tracking-[-0.01em] text-ink">{d.request.amount} USDC</span>
+                    <span className="text-[13px] text-muted">{d.request.category}</span>
+                    <span className="ml-auto font-mono text-[11.5px] text-faint">{d.review?.review}</span>
+                  </div>
+                  <p className="mt-1 text-[12.5px] text-body">
+                    {d.reason} · to <span className="font-mono">{short(d.request.recipient)}</span>
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <Button size="sm" variant="primary" onClick={() => void post("/api/lab/review", { review: d.review!.review, action: "approve" })}>
+                      Approve
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => void post("/api/lab/review", { review: d.review!.review, action: "deny" })}>
+                      Deny
+                    </Button>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-muted">
-                  {d.reason}. To <span className="font-mono">{short(d.request.recipient)}</span>. You are acting as {d.review?.waits_for}.
-                </p>
-                <div className="mt-2.5 flex gap-2">
-                  <Button tone="ok" size="sm" onClick={() => void post("/api/lab/review", { review: d.review!.review, action: "approve" })}>
-                    Approve
-                  </Button>
-                  <Button tone="danger" size="sm" onClick={() => void post("/api/lab/review", { review: d.review!.review, action: "deny" })}>
-                    Deny
-                  </Button>
-                  <span className="ml-auto self-center text-[11px] text-dim">Approving issues a new allow that supersedes this decision.</span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </section>
         )}
 
-        {/* Decisions */}
-        <div>
-          <h3 className="mb-2 flex items-center text-xs font-medium uppercase tracking-wider text-dim">
-            Decision log <span className="ml-1.5 font-mono normal-case tracking-normal">({state.decisions.length})</span>
-            <span className="ml-auto font-mono text-[10px] normal-case tracking-normal">GET /v1/decisions?agent=…</span>
-          </h3>
+        <section className="px-5 py-4">
+          <SectionLabel
+            info="GET /v1/decisions. Every authorization, allowed or not, with its signed verdict. Click a row to decode it or verify it in the Inspector."
+            right={<span className="font-mono text-[11.5px] text-faint">{state.decisions.length}</span>}
+          >
+            Decision log
+          </SectionLabel>
           {state.decisions.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-line p-4 text-center text-xs text-dim">Every authorization, allowed or not, is recorded here with a signed verdict.</p>
+            <p className="rounded-md border border-dashed border-line-strong px-4 py-5 text-center text-[13px] text-muted">No decisions yet.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="divide-y divide-line overflow-hidden rounded-md border border-line">
               {state.decisions.map((d) => (
                 <DecisionRow key={d.decision} d={d} />
               ))}
             </ul>
           )}
-        </div>
+        </section>
       </div>
     </Panel>
   );
 }
 
-function Limit({ label, value }: { label: string; value: string }) {
+function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-dim">{label}</dt>
-      <dd className="truncate font-medium text-text" title={value}>
-        {value}
-      </dd>
+      <dt className="text-[12px] text-muted">{label}</dt>
+      <dd className="mt-0.5 break-words text-[13.5px] font-medium text-ink">{value}</dd>
     </div>
   );
 }
@@ -158,35 +163,34 @@ function DecisionRow({ d }: { d: Decision }) {
   };
 
   return (
-    <li className="slide-in rounded-lg border border-line bg-raised/40">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-2.5 py-2 text-left" title={VERDICT_MEANING[d.verdict]}>
-        <VerdictBadge verdict={d.verdict} />
-        <span className="font-mono text-xs text-bright">{d.request.amount}</span>
-        <span className="text-xs text-dim">{d.request.category}</span>
-        {d.supersedes && <span className="rounded bg-info/12 px-1 text-[10px] text-info">supersedes</span>}
-        <span className="ml-auto font-mono text-[11px] text-dim">{time(d.issued_at)}</span>
-        <span className={`text-dim transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+    <li className="slide-in bg-surface">
+      <button onClick={() => setOpen((o) => !o)} className="w-full px-3 py-2.5 text-left transition hover:bg-subtle" aria-expanded={open}>
+        <div className="flex items-center gap-2.5">
+          <span className="font-mono text-[11.5px] text-faint">{time(d.issued_at)}</span>
+          <VerdictBadge verdict={d.verdict} />
+          <span className="font-mono text-[12.5px] text-ink">{d.request.amount}</span>
+          <span className="text-[12px] text-muted">{d.request.category}</span>
+          {d.supersedes && <Pill tone="info">supersedes</Pill>}
+          <span className={`ml-auto text-faint transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+        </div>
+        <p className="mt-1 text-[12.5px] leading-snug text-body">{d.reason}</p>
       </button>
-      <p className="-mt-1 truncate px-2.5 pb-2 text-[11.5px] text-muted">{d.reason}</p>
       {open && (
-        <div className="space-y-2 border-t border-line p-2.5">
-          <p className="text-[11.5px] text-muted">{VERDICT_MEANING[d.verdict]}</p>
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="font-mono text-dim">{d.decision}</span>
-            {d.supersedes && <span className="font-mono text-dim">← {d.supersedes}</span>}
-            <span className="ml-auto flex gap-1.5">
+        <div className="space-y-2.5 border-t border-line bg-subtle/50 px-3 py-3">
+          <p className="text-[12.5px] text-body">{VERDICT_MEANING[d.verdict]}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11.5px] text-faint">
+              {d.decision}
+              {d.supersedes && ` ← ${d.supersedes}`}
+            </span>
+            <span className="ml-auto flex gap-2">
               <CopyButton text={d.verdict_token} label="Copy token" />
-              <button onClick={inspect} className="rounded border border-info/40 px-1.5 py-0.5 text-info hover:bg-info/10">
-                Verify in Inspector →
-              </button>
+              <Button size="sm" variant="primary" onClick={inspect}>
+                Verify →
+              </Button>
             </span>
           </div>
-          {decoded && (
-            <>
-              <Json value={decoded.header} />
-              <Json value={decoded.claims} />
-            </>
-          )}
+          {decoded && <Json value={decoded.claims} />}
         </div>
       )}
     </li>
@@ -197,44 +201,43 @@ function MandateForm({ onSubmit }: { onSubmit: (v: { per_transaction: number; pe
   const [v, setV] = useState({ per_transaction: "0.5", per_month: "5", review_above: "0.2" });
   const [cats, setCats] = useState<string[]>(["data"]);
   const field = (k: keyof typeof v, label: string) => (
-    <label className="text-[11px] text-dim">
+    <label className="text-[12px] text-muted">
       {label}
       <input
         value={v[k]}
         onChange={(e) => setV({ ...v, [k]: e.target.value })}
         inputMode="decimal"
-        className="mt-0.5 w-full rounded border border-line-strong bg-bg px-2 py-1 font-mono text-xs text-bright focus:border-dim focus:outline-none"
+        className="mt-1 h-9 w-full rounded-md border border-line-strong bg-surface px-2.5 font-mono text-[13px] text-ink focus:border-ink focus:outline-none"
       />
     </label>
   );
   return (
     <form
-      className="mt-3 space-y-2.5 border-t border-line pt-3"
+      className="mt-4 space-y-3 rounded-md border border-line bg-subtle/60 p-3.5"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ per_transaction: Number(v.per_transaction), per_month: Number(v.per_month), review_above: Number(v.review_above), categories: cats });
       }}
     >
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2.5">
         {field("per_transaction", "Per purchase")}
         {field("per_month", "Per 30 days")}
         {field("review_above", "Review above")}
       </div>
-      <div className="flex items-center gap-3 text-xs text-muted">
-        <span className="text-[11px] text-dim">Categories</span>
+      <div className="flex items-center gap-4 text-[13px] text-ink">
         {["data", "compute"].map((c) => (
           <label key={c} className="flex items-center gap-1.5">
-            <input type="checkbox" checked={cats.includes(c)} onChange={(e) => setCats(e.target.checked ? [...cats, c] : cats.filter((x) => x !== c))} className="accent-[#c7f36b]" />
+            <input type="checkbox" checked={cats.includes(c)} onChange={(e) => setCats(e.target.checked ? [...cats, c] : cats.filter((x) => x !== c))} className="accent-[#0f1e33]" />
             {c}
           </label>
         ))}
-        <span className="ml-auto">
-          <Button type="submit" size="sm" tone="primary" disabled={cats.length === 0}>
+        <span className="ml-auto flex items-center gap-2">
+          <InfoTip content="Revokes the current mandate and issues this one." />
+          <Button type="submit" size="sm" variant="primary" disabled={cats.length === 0}>
             Issue mandate
           </Button>
         </span>
       </div>
-      <p className="text-[11px] text-dim">Mandates can&apos;t be edited, only revoked. This revokes the current one and issues a new one.</p>
     </form>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { LabState } from "@/lib/lab/state";
+import { InfoTip, short, Tip } from "../ui";
 import { AgentPanel } from "./AgentPanel";
 import { SaifuroPanel } from "./SaifuroPanel";
 import { SellerPanel } from "./SellerPanel";
@@ -50,90 +51,112 @@ export function Lab() {
   }, [refresh, fast]);
 
   return (
-    <main className="mx-auto max-w-[1500px] px-4 pb-10 pt-6 sm:px-6">
-      <Intro state={state} />
+    <main className="mx-auto flex max-w-[1440px] flex-col px-6 lg:h-[calc(100dvh-4rem)] lg:min-h-[760px]">
+      <section className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5 pb-6 pt-8">
+        <div>
+          <div className="kicker">Saifuro × x402 · Base Sepolia</div>
+          <h1 className="mt-2 text-[34px] font-semibold leading-[1.1] tracking-[-0.035em] text-ink">An agent with a wallet, under a mandate.</h1>
+          <div className="mt-2.5 flex items-center gap-2.5 text-[15px] text-body">
+            A limit in a prompt is a request. A mandate is enforced.
+            <HowItWorks />
+          </div>
+        </div>
+        {state && <StatusStrip state={state} />}
+      </section>
+
       {error && (
-        <div className="mb-4 flex items-start gap-3 rounded-lg border border-deny/40 bg-deny/10 px-4 py-2.5 text-sm text-deny">
+        <div className="mb-4 flex items-start gap-3 rounded-md border border-deny/30 bg-deny-soft px-4 py-2.5 text-sm text-deny">
           <span className="flex-1">{error}</span>
-          <button className="text-deny/70 hover:text-deny" onClick={() => setError(null)} aria-label="Dismiss">
+          <button className="opacity-70 hover:opacity-100" onClick={() => setError(null)} aria-label="Dismiss">
             ✕
           </button>
         </div>
       )}
+
       {state ? (
-        <div className="grid gap-4 lg:h-[calc(100vh-19rem)] lg:min-h-[600px] lg:grid-cols-[1.15fr_1fr_1fr]">
+        <div className="grid min-h-0 flex-1 gap-4 pb-6 lg:grid-cols-[1.12fr_1fr_1fr]">
           <AgentPanel state={state} post={post} />
           <SaifuroPanel state={state} post={post} />
           <SellerPanel state={state} post={post} />
         </div>
       ) : (
-        <div className="grid h-96 place-items-center rounded-xl border border-line text-muted">{error ? "Could not load the lab." : "Starting the lab…"}</div>
+        <div className="mb-6 grid min-h-96 flex-1 place-items-center rounded-md border border-line bg-surface text-sm text-muted">
+          {error ? "Could not load the lab." : "Starting the lab…"}
+        </div>
       )}
     </main>
   );
 }
 
 const FLOW = [
-  { n: "1", who: "Agent", text: "requests a paid dataset" },
-  { n: "2", who: "Seller", text: "answers 402 with a price" },
-  { n: "3", who: "Saifuro", text: "checks the mandate, signs a verdict" },
-  { n: "4", who: "Agent", text: "signs the x402 payment only on allow" },
-  { n: "5", who: "Seller", text: "verifies the verdict, settles, serves" },
+  ["Agent", "requests a paid dataset"],
+  ["Seller", "answers 402 with a price"],
+  ["Saifuro", "checks the mandate and signs a verdict"],
+  ["Agent", "signs the x402 payment only on allow"],
+  ["Seller", "verifies the verdict, settles, serves"],
 ];
 
-function Intro({ state }: { state: LabState | null }) {
-  const st = state?.status;
+function HowItWorks() {
   return (
-    <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-bright sm:text-[28px]">An AI agent with a wallet, and a mandate it can&apos;t talk its way past.</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-          The agent buys market data from a paid API over <span className="text-text">x402</span>. Before it signs any payment,{" "}
-          <span className="text-text">Saifuro</span> decides whether the operator&apos;s mandate allows it. The seller then checks Saifuro&apos;s signed verdict
-          (12 steps) before it settles on <span className="text-text">Base Sepolia</span>. A limit written in a prompt is a request. A mandate is enforced.
-        </p>
-        <ol className="mt-4 flex flex-wrap gap-1.5 text-xs">
-          {FLOW.map((f) => (
-            <li key={f.n} className="flex items-center gap-1.5 rounded-full border border-line bg-surface py-1 pl-1 pr-3">
-              <span className="grid h-5 w-5 place-items-center rounded-full bg-raised font-mono text-[10px] text-muted">{f.n}</span>
-              <span className="font-medium text-bright">{f.who}</span>
-              <span className="text-muted">{f.text}</span>
+    <Tip
+      content={
+        <ol className="space-y-1">
+          {FLOW.map(([who, what], i) => (
+            <li key={i} className="flex gap-2">
+              <span className="font-mono text-white/50">{i + 1}</span>
+              <span>
+                <b className="font-semibold">{who}</b> {what}
+              </span>
             </li>
           ))}
         </ol>
-      </div>
-      {st && (
-        <dl className="grid grid-cols-3 gap-2 text-xs lg:w-[30rem]">
-          <Status label="Saifuro" ok={st.saifuro.kind === "saifuro"} value={st.saifuro.kind === "saifuro" ? "api.saifuro.com" : "Local emulator"} hint={st.saifuro.issuer} />
-          <Status
-            label="Payments"
-            ok={st.payments.mode === "live"}
-            value={st.payments.mode === "live" ? `Base Sepolia · ${st.payments.balance} USDC` : "Simulated"}
-            hint={st.payments.mode === "live" ? `Buyer ${st.payments.buyer}` : st.payments.reason}
-            link={st.payments.mode === "live" ? { href: `${st.explorer}/address/${st.payments.buyer}`, label: "Wallet ↗" } : { href: st.faucet, label: "Faucet ↗" }}
-          />
-          <Status label="Agent model" ok={st.ai.enabled} value={st.ai.enabled ? (st.ai.model ?? "on") : "Scripted only"} hint={st.ai.enabled ? "OpenAI-compatible via AI SDK" : "Set AI_API_KEY for free-form chat"} />
-        </dl>
-      )}
-    </div>
+      }
+    >
+      <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 py-1 text-[13px] font-medium text-ink hover:border-faint">
+        How it works
+        <span className="text-faint">?</span>
+      </button>
+    </Tip>
   );
 }
 
-function Status({ label, value, hint, ok, link }: { label: string; value: string; hint?: string; ok: boolean; link?: { href: string; label: string } }) {
+function StatusStrip({ state }: { state: LabState }) {
+  const st = state.status;
+  const live = st.payments.mode === "live";
+  const balance = st.payments.balance != null ? `${Number(st.payments.balance).toFixed(2)} USDC` : null;
   return (
-    <div className="min-w-0 rounded-lg border border-line bg-surface px-3 py-2" title={hint}>
-      <dt className="flex items-center gap-1.5 text-dim">
+    <dl className="grid divide-y divide-line rounded-md border border-line bg-surface md:flex md:divide-x md:divide-y-0">
+      <Status label="Saifuro" ok={st.saifuro.kind === "saifuro"} info={st.saifuro.kind === "saifuro" ? st.saifuro.baseUrl : "A spec-faithful local emulator of the Saifuro API. Set SAIFURO_API_URL to use the real one."}>
+        {st.saifuro.kind === "saifuro" ? "api.saifuro.com" : "Local emulator"}
+      </Status>
+      <Status label="Payments" ok={live} info={live ? `Buyer ${st.payments.buyer}` : st.payments.reason}>
+        {live ? "Live on Base Sepolia" : "Simulated"}
+        {balance && <span className="font-mono text-[12.5px] font-normal text-body">{balance}</span>}
+        <a
+          href={live ? `${st.explorer}/address/${st.payments.buyer}` : st.faucet}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[12.5px] font-normal text-accent hover:underline"
+        >
+          {live ? `${short(st.payments.buyer ?? "")} ↗` : "Faucet ↗"}
+        </a>
+      </Status>
+      <Status label="Agent model" ok={st.ai.enabled} info={st.ai.enabled ? "Any OpenAI-compatible endpoint, through the AI SDK" : "Set AI_API_KEY for free-form chat"}>
+        {st.ai.enabled ? (st.ai.model ?? "on") : "Scripted only"}
+      </Status>
+    </dl>
+  );
+}
+
+function Status({ label, ok, info, children }: { label: string; ok: boolean; info?: string; children: React.ReactNode }) {
+  return (
+    <div className="px-4 py-2.5">
+      <dt className="flex items-center gap-1.5">
         <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-allow" : "bg-review"}`} />
-        {label}
+        <span className="kicker">{label}</span>
+        {info && <InfoTip content={info} />}
       </dt>
-      <dd className="mt-0.5 flex items-baseline gap-2 font-medium text-bright">
-        <span className="truncate">{value}</span>
-        {link && (
-          <a href={link.href} target="_blank" rel="noreferrer" className="ml-auto shrink-0 font-normal text-info hover:underline">
-            {link.label}
-          </a>
-        )}
-      </dd>
+      <dd className="mt-1 flex items-baseline gap-2 whitespace-nowrap text-[14px] font-medium text-ink">{children}</dd>
     </div>
   );
 }

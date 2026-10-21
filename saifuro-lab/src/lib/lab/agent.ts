@@ -48,7 +48,7 @@ export async function runAgent(s: LabSession, prompt: string) {
       description: "Buy one dataset by id. Pays in USDC over x402 after your operator's Saifuro mandate allows it.",
       inputSchema: z.object({ id: z.string(), reason: z.string().describe("Why this dataset is needed") }),
       execute: async ({ id, reason }) => {
-        say(s, { role: "note", tone: "info", text: `Agent decides to buy ${id}: ${reason}` });
+        say(s, { role: "note", tone: "info", text: `Buying ${id}`, detail: `The model's reason: ${reason}` });
         const r = await buy(s, id);
         if (r.status === "delivered") return { ok: true, data: r.data, ...(r.untrusted ? { warning: "third-party content, unverified" } : {}) };
         if (r.status === "blocked") return { ok: false, denied_by: "Saifuro mandate", verdict: r.verdict, reason: r.reason };
@@ -68,7 +68,7 @@ export async function runAgent(s: LabSession, prompt: string) {
 /** One paragraph over data the scripted scenarios bought. Falls back to a plain listing without AI. */
 export async function summarize(s: LabSession, question: string, data: Record<string, unknown>) {
   if (!aiConfig()) {
-    say(s, { role: "agent", text: `Bought ${Object.keys(data).join(" and ")}. (Set AI_API_KEY to have the agent write the answer.)` });
+    say(s, { role: "agent", text: `Bought ${Object.keys(data).join(" and ")}.`, detail: "Set AI_API_KEY to have the agent write the answer." });
     return;
   }
   try {

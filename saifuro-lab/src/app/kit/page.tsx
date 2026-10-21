@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { InfoTip, Pill } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Integration kit · Saifuro × x402" };
 
@@ -74,89 +76,128 @@ const v = await verifyVerdict(storedToken, {
 });`;
 
 const FILES = [
-  ["kit/verdict/verify.ts", "The 12-step verifier (settle and record modes). Returns every step's status, not just pass/fail."],
-  ["kit/verdict/json.ts", "Strict JSON: duplicate member names rejected at any depth, numbers kept as written."],
-  ["kit/verdict/p256.ts", "ES256 with the checks WebCrypto skips: 64-byte R‖S, scalars in [1, n−1], point on curve."],
-  ["kit/verdict/decimal.ts", "Amounts compared by decimal value, never as floats. Issuer form: ≤15 integer, ≤6 fraction digits."],
+  ["kit/verdict/verify.ts", "The 12-step verifier, settle and record modes. Returns every step's status."],
+  ["kit/verdict/json.ts", "Strict JSON: duplicate members rejected at any depth, numbers kept as written."],
+  ["kit/verdict/p256.ts", "ES256 with the checks WebCrypto skips: 64-byte R‖S, scalars in range, point on curve."],
+  ["kit/verdict/decimal.ts", "Amounts compared as decimals, never floats."],
   ["kit/verdict/keys.ts", "JWKS source: HTTPS only, no redirects, 5-minute cache, one refetch on unknown kid."],
-  ["kit/verdict/replay.ts", "Nonce + supersedes store interface; memory implementation included."],
+  ["kit/verdict/replay.ts", "Nonce and supersedes store interface, with a memory implementation."],
   ["kit/client.ts", "Typed REST client: authorize, decisions, mandates, reviews, waitForApproval. Fails closed."],
   ["kit/x402.ts", "wrapFetchWithSaifuro: authorize before signing any x402 payment, attach the verdict."],
-  ["kit/ai.ts", "createPaidFetchTool: a Vercel AI SDK tool whose denials are tool results."],
+  ["kit/ai.ts", "createPaidFetchTool: an AI SDK tool whose denials are tool results."],
 ];
 
-function Code({ code }: { code: string }) {
-  return <pre className="scroll-thin overflow-x-auto rounded-lg border border-line bg-bg p-4 font-mono text-[12px] leading-relaxed text-text">{code}</pre>;
+const KEYWORDS = new Set(["import", "from", "const", "await", "async", "export", "function", "return", "if", "try", "catch", "new", "instanceof"]);
+const TOKEN = /(\/\/.*$)|("(?:[^"\\]|\\.)*")|\b([A-Za-z_]\w*)\b/gm;
+
+function highlight(code: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of code.matchAll(TOKEN)) {
+    const [text, comment, str, word] = m;
+    if (word && !KEYWORDS.has(word)) continue;
+    out.push(code.slice(last, m.index));
+    const cls = comment ? "text-faint" : str ? "text-accent" : "font-semibold text-ink";
+    out.push(
+      <span key={m.index} className={cls}>
+        {text}
+      </span>,
+    );
+    last = m.index + text.length;
+  }
+  out.push(code.slice(last));
+  return out;
 }
 
-function Section({ n, title, children, code }: { n: string; title: string; children: React.ReactNode; code: string }) {
+function Code({ file, code }: { file: string; code: string }) {
   return (
-    <section className="grid gap-4 border-t border-line py-8 lg:grid-cols-[22rem_1fr]">
-      <div>
-        <div className="font-mono text-xs text-accent">{n}</div>
-        <h2 className="mt-1 text-lg font-semibold text-bright">{title}</h2>
-        <div className="mt-2 space-y-2 text-sm leading-relaxed text-muted">{children}</div>
+    <div className="min-w-0 overflow-hidden rounded-md border border-line bg-surface">
+      <div className="flex h-10 items-center gap-2 border-b border-line bg-subtle px-4">
+        <span className="flex gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-line-strong" />
+          <span className="h-2.5 w-2.5 rounded-full bg-line-strong" />
+          <span className="h-2.5 w-2.5 rounded-full bg-line-strong" />
+        </span>
+        <span className="ml-2 font-mono text-[12px] text-muted">{file}</span>
       </div>
-      <Code code={code} />
+      <pre className="scroll-thin overflow-x-auto p-5 font-mono text-[12.5px] leading-[1.7] text-body [font-variant-ligatures:none]">{highlight(code)}</pre>
+    </div>
+  );
+}
+
+function Row({ n, who, title, tip, children, file, code }: { n: string; who: string; title: string; tip?: string; children: ReactNode; file: string; code: string }) {
+  return (
+    <section className="grid gap-8 border-t border-line py-10 lg:grid-cols-[20rem_1fr]">
+      <div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[13px] text-faint">{n}</span>
+          <Pill tone="info">{who}</Pill>
+        </div>
+        <div className="mt-3 flex items-start gap-2">
+          <h2 className="text-[21px] font-semibold leading-tight tracking-[-0.02em] text-ink">{title}</h2>
+          {tip && (
+            <span className="mt-1">
+              <InfoTip content={tip} />
+            </span>
+          )}
+        </div>
+        <div className="mt-3 space-y-2 text-[14.5px] leading-relaxed text-body">{children}</div>
+      </div>
+      <Code file={file} code={code} />
     </section>
   );
 }
 
+const c = (s: string) => <code className="rounded bg-subtle px-1 py-0.5 font-mono text-[12.5px] text-ink">{s}</code>;
+
 export default function KitPage() {
   return (
-    <main className="mx-auto max-w-[1200px] px-4 pb-16 pt-8 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-bright">Integration kit</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-        Everything the Lab runs on, in <code className="text-text">src/kit</code>. The verifier needs nothing but WebCrypto; the buyer side uses the x402 client and, optionally,
-        the AI SDK. Saifuro doesn&apos;t ship an SDK yet; this is what one could look like for the three people who integrate it: the agent builder, the seller, and the
-        auditor.
-      </p>
+    <main className="mx-auto max-w-[1200px] px-6 pb-20">
+      <section className="pb-8 pt-8">
+        <div className="kicker">src/kit</div>
+        <h1 className="mt-2 text-[34px] font-semibold leading-[1.1] tracking-[-0.035em] text-ink">Integration kit</h1>
+        <div className="mt-2.5 flex items-center gap-2.5 text-[15px] text-body">
+          What a Saifuro SDK could look like for the agent builder, the seller and the auditor.
+          <InfoTip content="Everything the Lab runs on. The verifier needs nothing but WebCrypto; the buyer side uses the x402 client and, optionally, the AI SDK." />
+        </div>
+      </section>
 
-      <div className="mt-6 grid gap-2 text-sm sm:grid-cols-3">
-        <Stat value="138/138" label="official test vectors pass, on the exact step" href="/inspector" />
-        <Stat value="0 signed" label="payments when the verdict isn't allow (enforce mode)" href="/" />
-        <Stat value="12 steps" label="checked by the seller before it settles" href="/inspector" />
+      <div className="grid overflow-hidden rounded-md border border-line bg-surface sm:grid-cols-3 sm:divide-x sm:divide-line">
+        <Stat value="138/138" label="official test vectors, exact step" href="/inspector" />
+        <Stat value="0 signed" label="payments without an allow" href="/" />
+        <Stat value="12 steps" label="checked before the seller settles" href="/inspector" />
       </div>
 
-      <div className="mt-8">
-        <Section n="01 · Agent builder" title="Ask Saifuro before every x402 payment" code={BUYER}>
+      <div className="mt-10">
+        <Row n="01" who="Agent builder" title="Ask Saifuro before every x402 payment" file="buyer.ts" code={BUYER} tip="The verdict travels with the payment in a Saifuro-Verdict header, so the seller can check it too.">
           <p>
-            Wrap <code>fetch</code> once. On a <code>402</code>, the wrapper asks Saifuro with the exact amount, currency and recipient the seller quoted, waits for a person on{" "}
-            <code>review</code>, and only signs the x402 payment on <code>allow</code>.
+            Wrap {c("fetch")} once. On a {c("402")} it authorizes the exact quote, waits on {c("review")}, and signs only on {c("allow")}.
           </p>
-          <p>The verdict travels with the payment in a <code>Saifuro-Verdict</code> header, so the seller can check it too.</p>
-        </Section>
-        <Section n="02 · Agent builder" title="Give a model a wallet it can't overspend" code={AGENT}>
+        </Row>
+        <Row n="02" who="Agent builder" title="Give a model a wallet it can't overspend" file="agent.ts" code={AGENT} tip="Try the Prompt injection scenario in the Lab to see the difference.">
+          <p>The model decides what to buy; the mandate decides whether it may pay. Denials come back as tool results, not crashes.</p>
+        </Row>
+        <Row n="03" who="Seller" title="Verify the verdict before you settle" file="app/api/data/route.ts" code={SELLER} tip="Replay, tamper and swap attacks fail at steps 12, 5 and 9. Try them from the Lab's seller panel.">
+          <p>Saifuro decides; the seller enforces. Check the 12 steps, then settle, then deliver.</p>
+        </Row>
+        <Row n="04" who="Auditor" title="Re-check what you stored" file="audit.ts" code={RECORD}>
           <p>
-            The model decides what to buy; the mandate decides whether it may pay. Denials come back as tool results, so the agent explains them instead of crashing or
-            retrying in a loop.
+            Record mode proves later that a payment was authorized. Load Saifuro&apos;s own sample in the{" "}
+            <Link href="/inspector" className="font-medium text-accent hover:underline">
+              Inspector
+            </Link>
+            .
           </p>
-          <p>A budget in the prompt is a request. Try the Prompt injection scenario in the Lab to see the difference.</p>
-        </Section>
-        <Section n="03 · Seller" title="Verify the verdict before you settle" code={SELLER}>
-          <p>
-            Saifuro decides; it doesn&apos;t move money or block anything itself. The seller is where a verdict becomes enforcement: check the 12 steps first, settle second,
-            deliver third.
-          </p>
-          <p>
-            Replay, tamper and swap attacks fail at steps 12, 5 and 9. Try them from the Lab&apos;s seller panel.
-          </p>
-        </Section>
-        <Section n="04 · Auditor" title="Re-check what you stored" code={RECORD}>
-          <p>
-            Record mode runs the authenticity and timing steps against when you received the token, which is how you prove later that a payment was authorized. Paste
-            Saifuro&apos;s own sample into the <Link href="/inspector" className="text-info hover:underline">Inspector</Link> to see it.
-          </p>
-        </Section>
+        </Row>
       </div>
 
-      <section className="border-t border-line pt-8">
-        <h2 className="text-lg font-semibold text-bright">What&apos;s in the box</h2>
-        <dl className="mt-4 grid gap-px overflow-hidden rounded-lg border border-line bg-line text-sm">
+      <section className="border-t border-line pt-10">
+        <div className="kicker">What&apos;s in the box</div>
+        <dl className="mt-4 divide-y divide-line overflow-hidden rounded-md border border-line bg-surface">
           {FILES.map(([f, d]) => (
-            <div key={f} className="grid gap-1 bg-surface px-4 py-2.5 sm:grid-cols-[14rem_1fr]">
-              <dt className="font-mono text-xs text-bright">{f}</dt>
-              <dd className="text-muted">{d}</dd>
+            <div key={f} className="grid gap-1 px-5 py-3 sm:grid-cols-[13rem_1fr]">
+              <dt className="font-mono text-[12.5px] font-medium text-ink">{f}</dt>
+              <dd className="text-[13.5px] text-body">{d}</dd>
             </div>
           ))}
         </dl>
@@ -167,9 +208,9 @@ export default function KitPage() {
 
 function Stat({ value, label, href }: { value: string; label: string; href: string }) {
   return (
-    <Link href={href} className="rounded-lg border border-line bg-surface px-4 py-3 transition hover:border-line-strong">
-      <div className="text-xl font-semibold text-bright">{value}</div>
-      <div className="text-xs text-muted">{label}</div>
+    <Link href={href} className="group px-6 py-5 transition hover:bg-subtle">
+      <div className="text-[26px] font-semibold tracking-[-0.025em] text-ink">{value}</div>
+      <div className="mt-0.5 text-[13px] text-muted group-hover:text-body">{label}</div>
     </Link>
   );
 }

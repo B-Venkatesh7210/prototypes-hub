@@ -19,29 +19,59 @@ function narrate(s: LabSession, e: SpendEvent) {
   const title = datasetById(id)?.title ?? id;
   switch (e.type) {
     case "quote":
-      say(s, { role: "step", tone: "info", text: `402 Payment Required: ${title} costs ${e.amount} ${e.currency}. Asking Saifuro before paying.` });
+      say(s, {
+        role: "step",
+        tone: "info",
+        tag: "402",
+        text: `${title} · ${e.amount} ${e.currency}`,
+        detail: "The seller answered 402 Payment Required with a price. The agent asks Saifuro before it signs anything.",
+      });
       break;
     case "decision": {
       const d = e.decision;
       const tone = d.verdict === "allow" ? "ok" : d.verdict === "review" ? "warn" : "bad";
-      const text = d.supersedes ? `Saifuro: allow (review approved) · ${d.reason}` : `Saifuro: ${d.verdict} · ${d.reason}`;
-      say(s, { role: "step", tone, text, detail: d.decision });
+      say(s, {
+        role: "step",
+        tone,
+        tag: d.verdict,
+        text: d.supersedes ? `review approved · ${d.reason}` : d.reason,
+        detail: d.supersedes ? `Decision ${d.decision}, a fresh allow that supersedes ${d.supersedes}.` : `Saifuro decision ${d.decision}, signed as an ES256 verdict.`,
+      });
       break;
     }
     case "review_wait":
-      say(s, { role: "note", tone: "warn", text: `Held for ${e.decision.review?.waits_for}. Approve or deny it in the Saifuro panel; the agent waits.` });
+      say(s, {
+        role: "note",
+        tone: "warn",
+        text: "Waiting for approval in the Saifuro panel",
+        detail: `Held for ${e.decision.review?.waits_for}. A review stays open for 24 hours; the agent stops waiting after 3 minutes.`,
+      });
       break;
     case "payment_signed":
-      say(s, { role: "step", tone: "info", text: `Signed an x402 payment: ${e.amount} ${e.currency} to ${short(e.payTo)} (EIP-3009, nothing moves until the seller settles).` });
+      say(s, {
+        role: "step",
+        tone: "info",
+        tag: "signed",
+        text: `${e.amount} ${e.currency} → ${short(e.payTo)}`,
+        detail: "An x402 exact payment: an EIP-3009 transfer authorization. Nothing moves until the seller settles it, and the seller first verifies the verdict.",
+      });
       break;
     case "delivered":
       if (e.transaction) {
-        say(s, { role: "step", tone: "ok", text: "Seller verified the verdict and settled on Base Sepolia.", link: { href: `${EXPLORER}/tx/${e.transaction}`, label: short(e.transaction) } });
-      } else say(s, { role: "step", tone: "ok", text: "Seller verified the verdict. Settlement simulated (fund the buyer wallet to go live)." });
+        say(s, {
+          role: "step",
+          tone: "ok",
+          tag: "settled",
+          text: "Verdict verified, paid on Base Sepolia",
+          link: { href: `${EXPLORER}/tx/${e.transaction}`, label: short(e.transaction) },
+        });
+      } else {
+        say(s, { role: "step", tone: "ok", tag: "served", text: "Verdict verified · settlement simulated", detail: "Fund the buyer wallet with test USDC to settle on Base Sepolia." });
+      }
       break;
     case "refused": {
       const b = e.body as { message?: string; step?: number } | null;
-      say(s, { role: "step", tone: "bad", text: `Seller refused (${e.status})${b?.step ? ` at step ${b.step}` : ""}: ${b?.message ?? "no reason given"}` });
+      say(s, { role: "step", tone: "bad", tag: "refused", text: `${b?.step ? `step ${b.step} · ` : ""}${b?.message ?? `HTTP ${e.status}`}` });
       break;
     }
   }
@@ -75,11 +105,17 @@ export async function buy(s: LabSession, id: string, opts: { label?: string } = 
     return { status: "delivered", id, data: body?.data, untrusted: !!body?.untrusted, transaction: body?.receipt?.transaction ?? null, simulated: !!body?.receipt?.simulated };
   } catch (e) {
     if (e instanceof SpendBlockedError) {
-      say(s, { role: "step", tone: "bad", text: "Stopped before payment: nothing signed, nothing on-chain." });
+      say(s, {
+        role: "step",
+        tone: "bad",
+        tag: "stopped",
+        text: "Nothing signed, nothing on-chain",
+        detail: "In enforce mode the buyer only signs a payment on allow.",
+      });
       return { status: "blocked", id, verdict: e.decision.verdict, reason: e.decision.reason, decision: e.decision.decision };
     }
     const reason = (e as Error).message;
-    say(s, { role: "step", tone: "bad", text: `Purchase failed: ${reason}` });
+    say(s, { role: "step", tone: "bad", tag: "error", text: reason });
     return { status: "error", id, reason };
   }
 }

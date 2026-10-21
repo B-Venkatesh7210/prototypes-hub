@@ -14,12 +14,18 @@ export async function POST(req: Request) {
       if (action === "approve") {
         const d = await org.approveReview(review);
         s.resolvedReviews[review] = "approved";
-        say(s, { role: "step", tone: "ok", text: `${review} approved by role:research_lead. Saifuro issued a fresh allow (${d.decision}) that supersedes ${d.supersedes}.` });
+        say(s, {
+          role: "step",
+          tone: "ok",
+          tag: "approved",
+          text: `${review} by role:research_lead`,
+          detail: `Saifuro issued a fresh allow (${d.decision}) that supersedes ${d.supersedes}.`,
+        });
         return Response.json(d);
       }
       await org.denyReview(review);
       s.resolvedReviews[review] = "denied";
-      say(s, { role: "step", tone: "bad", text: `${review} denied. No decision is issued, so the agent's wait times out.` });
+      say(s, { role: "step", tone: "bad", tag: "denied", text: review, detail: "A denied review issues no decision, so the agent only learns when its wait times out." });
       return Response.json({ review, status: "denied" });
     } catch (e) {
       if (e instanceof SaifuroError) return Response.json({ error: e.message, code: e.code }, { status: e.status });
