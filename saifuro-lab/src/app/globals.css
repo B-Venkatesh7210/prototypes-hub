@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0b0d;
+  --color-surface: #111317;
+  --color-raised: #171a1f;
+  --color-line: #23272e;
+  --color-line-strong: #323844;
+  --color-text: #e7e9ee;
+  --color-muted: #9aa1ad;
+  --color-dim: #6b7280;
+  --color-bright: #ffffff;
+  --color-allow: #3ddc97;
+  --color-review: #f5b84b;
+  --color-deny: #ff6b6b;
+  --color-info: #7aa7ff;
+  --color-accent: #c7f36b;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2f38 transparent;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.slide-in {
+  animation: slide-in 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot,
+  .slide-in {
+    animation: none;
+  }
+}
