@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { LabState } from "@/lib/lab/state";
-import { InfoTip, short, Tip } from "../ui";
+import { InfoTip, Tip } from "../ui";
 import { AgentPanel } from "./AgentPanel";
 import { SaifuroPanel } from "./SaifuroPanel";
 import { SellerPanel } from "./SellerPanel";
@@ -124,24 +124,10 @@ function HowItWorks() {
 
 function StatusStrip({ state }: { state: LabState }) {
   const st = state.status;
-  const live = st.payments.mode === "live";
-  const balance = st.payments.balance != null ? `${Number(st.payments.balance).toFixed(2)} USDC` : null;
   return (
     <dl className="grid divide-y divide-line rounded-md border border-line bg-surface md:flex md:divide-x md:divide-y-0">
       <Status label="Saifuro" ok={st.saifuro.kind === "saifuro"} info={st.saifuro.kind === "saifuro" ? st.saifuro.baseUrl : "A spec-faithful local emulator of the Saifuro API. Set SAIFURO_API_URL to use the real one."}>
         {st.saifuro.kind === "saifuro" ? "api.saifuro.com" : "Local emulator"}
-      </Status>
-      <Status label="Payments" ok={live} info={live ? `Buyer ${st.payments.buyer}` : st.payments.reason}>
-        {live ? "Live on Base Sepolia" : "Simulated"}
-        {balance && <span className="font-mono text-[12.5px] font-normal text-body">{balance}</span>}
-        <a
-          href={live ? `${st.explorer}/address/${st.payments.buyer}` : st.faucet}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[12.5px] font-normal text-accent hover:underline"
-        >
-          {live ? `${short(st.payments.buyer ?? "")} ↗` : "Faucet ↗"}
-        </a>
       </Status>
       <Status label="Agent model" ok={st.ai.enabled} info={st.ai.enabled ? "Any OpenAI-compatible endpoint, through the AI SDK" : "Set AI_API_KEY for free-form chat"}>
         {st.ai.enabled ? (st.ai.model ?? "on") : "Scripted only"}
