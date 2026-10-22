@@ -6,8 +6,9 @@ export const SCENARIOS = {
   category: { title: "Wrong category", blurb: "The agent tries to buy GPU compute on a data-only mandate.", side: "agent", expect: "deny_category" },
   revoke: { title: "Revoke mid-run", blurb: "Revoke the mandate; the next request is denied.", side: "agent", expect: "deny_revoked" },
   replay: { title: "Replay", blurb: "Resend an approval the seller already accepted.", side: "seller", expect: "step 12" },
-  tamper: { title: "Tamper", blurb: "Change an approved amount from 0.001 to 900, keep the signature.", side: "seller", expect: "step 5" },
+  tamper: { title: "Tamper", blurb: "Edit a genuine approval to say 900 USDC, keep the signature.", side: "seller", expect: "step 5" },
   swap: { title: "Swap", blurb: "Present a fresh $0.001 approval for the $0.30 dataset.", side: "seller", expect: "step 9" },
+  campaign: { title: "Diwali campaign", blurb: "A design agent buys real images on Base mainnet until its ₹30 budget runs out.", side: "merchant", expect: "deny_limit" },
 } as const;
 
 export type ScenarioId = keyof typeof SCENARIOS;

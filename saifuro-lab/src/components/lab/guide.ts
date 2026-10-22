@@ -2,7 +2,7 @@ import type { ScenarioId } from "@/lib/lab/scenario-list";
 import type { LabState } from "@/lib/lab/state";
 
 export type Msg = LabState["messages"][number];
-export type Actor = "agent" | "seller" | "saifuro" | "you" | "operator" | "attacker";
+export type Actor = "agent" | "seller" | "merchant" | "saifuro" | "you" | "operator" | "attacker";
 
 export type Phase = {
   who: Actor;
@@ -15,8 +15,8 @@ export type Phase = {
   doneWhen?: (events: Msg[]) => boolean;
   /** May not happen at all, e.g. an attack reusing an earlier purchase. */
   optional?: boolean;
-  /** Needs the user: approve a review, or issue a new mandate. */
-  action?: "review" | "mandate";
+  /** Needs the user: approve a review, issue a new mandate, or top up a task budget. */
+  action?: "review" | "mandate" | "topup";
 };
 
 export type Guide = {
@@ -78,6 +78,41 @@ const setup: Phase = {
 };
 
 const verdictCheck = (re: RegExp) => after(re, tags("refused", "served"));
+
+const isDeny = (m: Msg) => !!m.tag?.startsWith("deny_");
+/** Index of the 402 quote that ended in the first denial, or -1. */
+function deniedQuote(run: Msg[]) {
+  const d = run.findIndex(isDeny);
+  if (d < 0) return -1;
+  for (let i = d; i >= 0; i--) if (run[i].tag === "402") return i;
+  return d;
+}
+const firstReply = (run: Msg[]) => run.findIndex((m) => m.role === "agent");
+const BUY_TAGS = ["402", "allow", "signed", "settled", "error"];
+
+/** Paid images before the budget ran out. */
+const paidImages = (run: Msg[]) => {
+  const ends = [deniedQuote(run), firstReply(run)].filter((i) => i >= 0);
+  const end = ends.length ? Math.min(...ends) : run.length;
+  return run.slice(0, end).filter((m) => (m.tag && BUY_TAGS.includes(m.tag)) || /is rendering$/.test(m.text));
+};
+const budgetDenial = (run: Msg[]) => {
+  const q = deniedQuote(run);
+  if (q < 0) return [];
+  const stop = run.findIndex((m, i) => i > q && m.tag === "stopped");
+  return run.slice(q, stop < 0 ? run.length : stop + 1).filter((m) => m.role === "step");
+};
+const topupChoice = (run: Msg[]) => {
+  const i = run.findIndex((m) => m.tag === "topup" || m.tag === "declined");
+  if (i < 0) return [];
+  if (run[i].tag === "topup") return [run[i]];
+  const reply = run.findIndex((m, j) => j > i && m.role === "agent");
+  return reply < 0 ? [run[i]] : [run[i], run[reply]];
+};
+const afterTopup = (run: Msg[]) => {
+  const i = run.findIndex((m) => m.tag === "topup");
+  return i < 0 ? [] : run.slice(i + 1).filter((m) => m.role === "agent" || m.role === "step");
+};
 
 export const GUIDES: Record<ScenarioId, Guide> = {
   research: {
@@ -341,6 +376,47 @@ export const GUIDES: Record<ScenarioId, Guide> = {
       },
     ],
   },
+
+  campaign: {
+    edge: "Task budget",
+    goal: "A design agent has to make 8 Diwali sale creatives for a Jaipur sweet shop. It buys each image from BlockRun, a real x402 merchant, with real USDC on Base mainnet. The brief needs more images than the ₹30 budget can pay for.",
+    why: "An agent with a wallet and an open-ended creative brief will keep spending. The budget lives in a mandate outside the agent, so it holds even though the merchant never checks Saifuro.",
+    expect: "Images 1–6 are allowed and paid on Base mainnet. Image 7 is denied with deny_limit and nothing is signed. You choose whether to top up.",
+    phases: [
+      {
+        who: "you",
+        title: "You set the task budget",
+        explain: "A mandate for this task only: up to ₹10 per image, ₹30 in total, images only, expiring tomorrow. The agent can't read or change it.",
+        pick: tags("mandate"),
+      },
+      { who: "agent", title: "Plans 8 creatives", explain: "Instagram post and story, WhatsApp status, shop banner, menu header, gift label, Facebook cover and email header, in priority order.", pick: notes(/^Plan:/) },
+      {
+        who: "merchant",
+        title: "Buys images one by one",
+        explain:
+          "For each image BlockRun answers 402 with a price (about ₹4.7). Saifuro checks it against the mandate and allows it, the wallet signs, and BlockRun settles the USDC on Base mainnet and returns the image.",
+        pick: paidImages,
+        doneWhen: () => false,
+      },
+      {
+        who: "saifuro",
+        title: "Budget runs out: deny_limit",
+        explain: "The next image would take the task total over ₹30. Saifuro denies it, so the wallet signs nothing and BlockRun is never paid. The agent didn't have to count anything.",
+        pick: budgetDenial,
+        closes: ["stopped"],
+      },
+      { who: "agent", title: "Reports back", explain: "The agent says what it delivered, what it spent and what's left undone.", pick: (run) => reply(run).slice(0, 1) },
+      {
+        who: "you",
+        title: "Top up or stop",
+        explain: "A top-up is a new mandate with ₹15 more for this task; the exhausted one is revoked. Or keep the budget, and the agent stops with what it has.",
+        pick: topupChoice,
+        closes: ["topup", "declined"],
+        action: "topup",
+      },
+      { who: "agent", title: "Finishes the campaign", explain: "With the new budget, the agent buys the remaining creatives the same way.", pick: afterTopup, doneWhen: (ev) => ev.some((m) => m.role === "agent") },
+    ],
+  },
 };
 
 export type PhaseStatus = "pending" | "active" | "waiting" | "done" | "skipped";
@@ -348,19 +424,18 @@ export type PhaseStatus = "pending" | "active" | "waiting" | "done" | "skipped";
 export function phaseStatuses(phases: Phase[], run: Msg[] | null, running: boolean, needsYou: boolean): { status: PhaseStatus; events: Msg[] }[] {
   const events = phases.map((p) => (run ? p.pick(run) : []));
   const finished = !!run && !running;
+  const lastStarted = events.reduce((acc, ev, i) => (ev.length ? i : acc), -1);
   const complete = phases.map((p, i) => {
     const ev = events[i];
     if (!ev.length) return false;
-    if (p.doneWhen) return p.doneWhen(ev) || (finished && !p.action);
-    if (p.closes) return ev.some((m) => m.tag && p.closes!.includes(m.tag)) || (finished && !p.action);
-    return true;
+    const closed = p.doneWhen ? p.doneWhen(ev) : p.closes ? ev.some((m) => m.tag && p.closes!.includes(m.tag)) : true;
+    return closed || (!p.action && (finished || lastStarted > i));
   });
-  const lastStarted = events.reduce((acc, ev, i) => (ev.length ? i : acc), -1);
   let activeTaken = false;
   return phases.map((p, i) => {
     if (complete[i]) return { status: "done", events: events[i] };
     if (p.optional && lastStarted > i) return { status: "skipped", events: events[i] };
-    if (p.action && run && (p.action === "review" ? needsYou : events[i].length > 0)) {
+    if (p.action && run && (p.action === "mandate" ? events[i].length > 0 : needsYou)) {
       activeTaken = true;
       return { status: "waiting", events: events[i] };
     }

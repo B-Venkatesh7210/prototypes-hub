@@ -11,7 +11,14 @@ const IDS = Object.keys(SCENARIOS) as ScenarioId[];
 const GROUPS: { label: string; info: string; ids: ScenarioId[] }[] = [
   { label: "Agent edge cases", info: "Saifuro stops these before anything is signed. The seller never hears about them.", ids: IDS.filter((id) => SCENARIOS[id].side === "agent") },
   { label: "Attacks on the seller", info: "Saifuro already said allow. Only the seller, verifying the verdict, can catch these.", ids: IDS.filter((id) => SCENARIOS[id].side === "seller") },
+  {
+    label: "Real merchant · Base mainnet",
+    info: "A third-party x402 merchant, paid in real USDC. It doesn't check verdicts, so the agent's own guard is what holds.",
+    ids: IDS.filter((id) => SCENARIOS[id].side === "merchant"),
+  },
 ];
+
+const SIDE: Record<string, string> = { agent: "Agent edge case", seller: "Attack on the seller", merchant: "Real merchant" };
 
 const SUGGESTIONS = ["What are BTC and ETH trading at?", "Compare stablecoin supply by chain.", "Get me the institutional flows report."];
 
@@ -50,6 +57,8 @@ function initialView(messages: Msg[]): View {
 export function AgentPanel({ state, post }: { state: LabState; post: Post }) {
   const [view, setView] = useState<View>(() => initialView(state.messages));
   const m = state.mandate;
+  const design = view !== "ask" && SCENARIOS[view].side === "merchant";
+  const dm = state.merchant.mandate;
 
   return (
     <section className="flex flex-col overflow-hidden rounded-md border border-line bg-surface lg:h-[calc(100dvh-14rem)] lg:min-h-[640px]">
@@ -57,13 +66,28 @@ export function AgentPanel({ state, post }: { state: LabState; post: Post }) {
         <div className="min-w-0">
           <div className="kicker">Buyer</div>
           <div className="mt-0.5 flex items-center gap-2">
-            <h2 className="text-[17px] font-semibold tracking-[-0.015em] text-ink">Research agent</h2>
-            <span className="font-mono text-[12px] text-faint">{state.agent}</span>
-            <InfoTip content="An AI agent with a Base Sepolia wallet. It pays per request over x402, and only after Saifuro allows the payment." />
+            <h2 className="text-[17px] font-semibold tracking-[-0.015em] text-ink">{design ? "Design agent" : "Research agent"}</h2>
+            <span className="font-mono text-[12px] text-faint">{design ? (state.merchant.agent ?? "created on first run") : state.agent}</span>
+            <InfoTip
+              content={
+                design
+                  ? "A second agent with its own wallet on Base mainnet, holding real USDC. It buys images over x402, and only after Saifuro allows the payment."
+                  : "An AI agent with a Base Sepolia wallet. It pays per request over x402, and only after Saifuro allows the payment."
+              }
+            />
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
-          {m && (
+          {design && dm && (
+            <span className="flex items-center gap-2 rounded-md border border-line bg-subtle px-2.5 py-1.5 text-[12.5px] text-body">
+              <span className="kicker !text-[11px]">Mandate</span>
+              <span className="font-mono text-ink">
+                {rupees(dm.limits.per_transaction, state)}/image · {rupees(dm.limits.per_month ?? 0, state)} task · {dm.categories.join(", ")}
+              </span>
+              <Pill tone={dm.status === "active" ? "ok" : "bad"}>{dm.status}</Pill>
+            </span>
+          )}
+          {!design && m && (
             <span className="flex items-center gap-2 rounded-md border border-line bg-subtle px-2.5 py-1.5 text-[12.5px] text-body">
               <span className="kicker !text-[11px]">Mandate</span>
               <span className="font-mono text-ink">
@@ -128,7 +152,7 @@ function NavItem({ id, n, active, running, ran, onClick }: { id: ScenarioId; n: 
       </div>
       <div className="mt-1 flex items-center gap-2 pl-[1.6rem]">
         <span className="text-[12px] text-muted">{GUIDES[id].edge}</span>
-        {s.side === "agent" ? <VerdictBadge verdict={s.expect} /> : <Pill mono>{s.expect}</Pill>}
+        {s.side === "seller" ? <Pill mono>{s.expect}</Pill> : <VerdictBadge verdict={s.expect} />}
       </div>
     </button>
   );
@@ -139,10 +163,13 @@ function ScenarioView({ id, state, post }: { id: ScenarioId; state: LabState; po
   const g = GUIDES[id];
   const run = lastRun(state.messages, id);
   const running = state.busy === s.title;
-  const statuses = phaseStatuses(g.phases, run?.msgs ?? null, running, running && state.pendingReviews.length > 0);
+  const merchant = s.side === "merchant";
+  const needsYou = running && (merchant ? state.merchant.topup === "waiting" : state.pendingReviews.length > 0);
+  const statuses = phaseStatuses(g.phases, run?.msgs ?? null, running, needsYou);
   const activeIdx = statuses.findIndex((x) => x.status === "active" || x.status === "waiting");
   const nodes = useRef<(HTMLLIElement | null)[]>([]);
   const revoked = state.mandate?.status !== "active";
+  const blocked = merchant && !state.merchant.wallet;
 
   useEffect(() => {
     if (activeIdx >= 0) nodes.current[activeIdx]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -154,13 +181,13 @@ function ScenarioView({ id, state, post }: { id: ScenarioId; state: LabState; po
         <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           <div className="min-w-0 flex-1">
             <div className="kicker">
-              {s.side === "agent" ? "Agent edge case" : "Attack on the seller"} · {g.edge}
+              {SIDE[s.side]} · {g.edge}
             </div>
             <h3 className="mt-1.5 text-[26px] font-semibold leading-tight tracking-[-0.025em] text-ink">{s.title}</h3>
           </div>
           <div className="flex items-center gap-3">
             {run && !running && <span className="text-[12.5px] text-muted">Last run {time(run.at)}</span>}
-            <Button variant="primary" disabled={!!state.busy} onClick={() => void post("/api/lab/run", { scenario: id })}>
+            <Button variant="primary" disabled={!!state.busy || blocked} onClick={() => void post("/api/lab/run", { scenario: id })}>
               {running ? "Running…" : run ? "Run again" : "Run scenario"}
             </Button>
           </div>
@@ -174,6 +201,12 @@ function ScenarioView({ id, state, post }: { id: ScenarioId; state: LabState; po
           <span className="kicker mt-0.5 shrink-0">Expected</span>
           <span className="text-[14px] text-ink">{g.expect}</span>
         </div>
+        {merchant && <MerchantCard state={state} />}
+        {blocked && (
+          <Banner tone="bad">
+            Add <span className="font-mono">BUYER_MAINNET_PRIVATE_KEY</span> to .env.local: a fresh wallet holding about 1 USDC on Base mainnet. No ETH is needed. Then restart the dev server.
+          </Banner>
+        )}
 
         {state.busy && !running && <Banner tone="info">The agent is busy with {state.busy}. You can read this one while it finishes.</Banner>}
         {revoked && id !== "revoke" && s.side === "agent" && (
@@ -206,6 +239,8 @@ function ScenarioView({ id, state, post }: { id: ScenarioId; state: LabState; po
                   statuses[i].status === "waiting" ? (
                     p.action === "review" ? (
                       <ReviewActions state={state} post={post} />
+                    ) : p.action === "topup" ? (
+                      <TopUpActions state={state} post={post} />
                     ) : revoked ? (
                       <div className="mt-3">
                         <NewMandate post={post} />
@@ -218,6 +253,134 @@ function ScenarioView({ id, state, post }: { id: ScenarioId; state: LabState; po
           ))}
         </ol>
         {g.after && <Banner tone="info">{g.after}</Banner>}
+        {merchant && run && <Gallery state={state} />}
+      </div>
+    </div>
+  );
+}
+
+function rupees(usd: number, state: LabState) {
+  const r = usd * state.merchant.inrPerUsd;
+  return `₹${r.toFixed(r < 10 ? 1 : 0)}`;
+}
+
+function MerchantCard({ state }: { state: LabState }) {
+  const mc = state.merchant;
+  const m = mc.mandate;
+  const cap = m?.limits.per_month ?? 0;
+  return (
+    <div className="mt-4 grid gap-x-8 gap-y-4 rounded-md border border-line px-4 py-3.5 md:grid-cols-[1.3fr_1fr]">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="kicker">Task budget</span>
+          <InfoTip content={`Mandates are in USDC. Rupees are shown at a fixed ₹${mc.inrPerUsd} per dollar.`} />
+          {m && <Pill tone={m.status === "active" ? "ok" : "bad"}>{m.status}</Pill>}
+        </div>
+        {m ? (
+          <>
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13.5px] text-body">
+              <span>
+                <b className="font-semibold text-ink">{rupees(m.limits.per_transaction, state)}</b> per image
+              </span>
+              <span>
+                <b className="font-semibold text-ink">{rupees(cap, state)}</b> in total
+              </span>
+              <span className="font-mono text-[12px] text-faint">{m.mandate}</span>
+            </div>
+            <div className="mt-2.5 flex justify-between text-[12px]">
+              <span className="text-muted">Spent on this mandate</span>
+              <span className="font-mono text-body">
+                {rupees(mc.spent, state)} / {rupees(cap, state)}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-subtle">
+              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${cap ? Math.min(100, (mc.spent / cap) * 100) : 0}%` }} />
+            </div>
+          </>
+        ) : (
+          <p className="mt-1.5 text-[13.5px] text-body">
+            ₹{mc.rules.per_image_inr} per image, ₹{mc.rules.budget_inr} in total. Issued fresh when you run the scenario.
+          </p>
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="kicker">Wallet · Base mainnet</span>
+          <InfoTip content={`Pays ${mc.name} (${mc.model}) over x402. ${mc.name} settles each payment and pays the gas.`} />
+        </div>
+        {mc.wallet ? (
+          <div className="mt-1.5 text-[13.5px] text-body">
+            <b className="font-semibold text-ink">{mc.balance != null ? `${Number(mc.balance).toFixed(3)} USDC` : "balance unavailable"}</b>
+            {mc.balance != null && <span className="text-muted"> ≈ {rupees(Number(mc.balance), state)}</span>}
+            <a href={`${mc.explorer}/address/${mc.wallet}`} target="_blank" rel="noreferrer" className="ml-2 font-mono text-[12px] text-accent hover:underline">
+              {mc.wallet.slice(0, 6)}…{mc.wallet.slice(-4)} ↗
+            </a>
+          </div>
+        ) : (
+          <p className="mt-1.5 text-[13.5px] text-muted">Not configured</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TopUpActions({ state, post }: { state: LabState; post: Post }) {
+  const mc = state.merchant;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-review/30 bg-review-soft px-4 py-3">
+      <span className="text-[13.5px] text-ink">
+        Add <b className="font-semibold">₹{mc.rules.topup_inr}</b> for the remaining creatives?
+      </span>
+      <span className="ml-auto flex gap-2">
+        <Button size="sm" variant="primary" onClick={() => void post("/api/lab/design", { action: "topup" })}>
+          Top up ₹{mc.rules.topup_inr}
+        </Button>
+        <Button size="sm" onClick={() => void post("/api/lab/design", { action: "stop" })}>
+          Stop here
+        </Button>
+      </span>
+    </div>
+  );
+}
+
+function Gallery({ state }: { state: LabState }) {
+  const mc = state.merchant;
+  const byId = new Map(mc.creatives.map((c) => [c.id, c]));
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="kicker">Creatives for {mc.brief.client}</span>
+        <span className="font-mono text-[11.5px] text-faint">
+          {mc.creatives.filter((c) => c.status === "paid").length}/{mc.brief.creatives.length}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {mc.brief.creatives.map((b) => {
+          const c = byId.get(b.id);
+          return (
+            <figure key={b.id} className="overflow-hidden rounded-md border border-line bg-surface">
+              <div className="grid aspect-square place-items-center bg-subtle">
+                {c?.status === "paid" && c.src ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.src} alt={b.title} className="h-full w-full object-cover" />
+                ) : (
+                  <span className={`px-3 text-center text-[12.5px] ${c?.status === "denied" || c?.status === "failed" ? "text-deny" : "text-faint"}`}>
+                    {c?.status === "denied" ? "Not bought: budget used up" : c?.status === "failed" ? "Failed" : c ? "No image returned" : "Not started"}
+                  </span>
+                )}
+              </div>
+              <figcaption className="flex items-center gap-2 px-3 py-2 text-[12.5px]">
+                <span className="min-w-0 flex-1 truncate font-medium text-ink">{b.title}</span>
+                {c?.status === "paid" && c.amount && <span className="font-mono text-[11.5px] text-muted">{rupees(Number(c.amount), state)}</span>}
+                {c?.transaction && (
+                  <a href={`${mc.explorer}/tx/${c.transaction}`} target="_blank" rel="noreferrer" className="font-mono text-[11.5px] text-accent hover:underline">
+                    tx ↗
+                  </a>
+                )}
+              </figcaption>
+            </figure>
+          );
+        })}
       </div>
     </div>
   );
@@ -276,6 +439,7 @@ const WHO: Record<Actor, { label: string; cls: string }> = {
   saifuro: { label: "Saifuro", cls: "bg-accent-soft text-accent" },
   seller: { label: "Seller", cls: "border border-line-strong bg-surface text-body" },
   you: { label: "You", cls: "bg-review-soft text-review" },
+  merchant: { label: "BlockRun", cls: "border border-line-strong bg-surface text-body" },
   operator: { label: "Operator", cls: "bg-review-soft text-review" },
   attacker: { label: "Attacker", cls: "bg-deny-soft text-deny" },
 };

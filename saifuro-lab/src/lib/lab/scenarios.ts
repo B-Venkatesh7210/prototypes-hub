@@ -3,11 +3,12 @@ import { createSaifuroClient } from "@/kit/client.ts";
 import { decodeSegment, encodeSegment } from "@/kit/verdict/encoding.ts";
 import { VERDICT_HEADER } from "@/kit/x402.ts";
 import { appUrl } from "@/lib/emulator/store";
-import { sellerAddress } from "@/lib/payments";
+import { mainnetUsdc, sellerAddress } from "@/lib/payments";
 import { datasetById } from "@/lib/seller/catalog";
 import { summarize } from "./agent";
 import { buy } from "./buyer";
-import { orgClient, saifuroBase, say, type LabSession } from "./session";
+import { BRIEF, generate, inr, MERCHANT, merchantReady, RULES, startDesignAgent } from "./merchant";
+import { orgClient, saifuroBase, say, type Creative, type DesignAgent, type LabSession } from "./session";
 import { SCENARIOS, type ScenarioId } from "./scenario-list";
 
 export { SCENARIOS, type ScenarioId };
@@ -120,5 +121,75 @@ export async function runScenario(s: LabSession, id: ScenarioId) {
       await sendToSeller(s, "base-deep-dive", { ...paid.headers, [VERDICT_HEADER.toLowerCase()]: d.verdict_token }, "Swap attack");
       return;
     }
+    case "campaign":
+      return campaign(s);
   }
+}
+
+async function campaign(s: LabSession) {
+  if (!merchantReady()) {
+    note(s, "No mainnet wallet configured", { tone: "warn", detail: "Set BUYER_MAINNET_PRIVATE_KEY in .env.local to a fresh wallet holding about 1 USDC on Base mainnet." });
+    return;
+  }
+  const balance = await mainnetUsdc(true);
+  if (balance !== null && Number(balance) < 0.06) {
+    note(s, `The wallet holds ${Number(balance).toFixed(3)} USDC on Base mainnet`, { tone: "warn", detail: "Send it about 1 USDC on Base mainnet. No ETH is needed." });
+    return;
+  }
+  const d = await startDesignAgent(s);
+  say(s, {
+    role: "step",
+    tone: "ok",
+    tag: "mandate",
+    text: `${d.mandate} · ₹${RULES.per_image_inr} per image · ₹${RULES.budget_inr} for the task · images only · expires tomorrow`,
+    detail: "Issued by role:marketing_lead for this one task. The agent can't read or change it.",
+  });
+  note(s, `Plan: ${BRIEF.creatives.length} creatives for ${BRIEF.client}`, { detail: BRIEF.creatives.map((c) => c.title).join(", ") });
+
+  const queue = [...BRIEF.creatives];
+  /** Buys until the queue is empty, Saifuro denies, or the merchant refuses a payment. */
+  const work = async (): Promise<Creative | null> => {
+    while (queue.length) {
+      const c = await generate(s, queue[0]);
+      if (c.status !== "paid") return c;
+      queue.shift();
+    }
+    return null;
+  };
+  const paid = () => d.creatives.filter((c) => c.status === "paid");
+  const spent = () => paid().reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+  const done = () => `${paid().length} of ${BRIEF.creatives.length} creatives are done for ${inr(spent())}`;
+  const failed = (c: Creative) =>
+    say(s, { role: "agent", text: `${done()}. ${MERCHANT.name} refused the payment for ${c.title}, so I stopped rather than keep asking.`, detail: c.reason });
+
+  const first = await work();
+  if (!first) {
+    say(s, { role: "agent", text: `All ${paid().length} creatives are done for ${inr(spent())}.` });
+    return;
+  }
+  if (first.status === "failed") return failed(first);
+
+  say(s, {
+    role: "agent",
+    text: `${done()}. The ₹${RULES.budget_inr} budget is used up, so ${queue.map((c) => c.title).join(" and ")} ${queue.length === 1 ? "is" : "are"} left. Top up to finish?`,
+  });
+  d.topup = "waiting";
+  // The top-up route changes this while we wait.
+  const choice = () => d.topup as DesignAgent["topup"];
+  const deadline = Date.now() + 180_000;
+  while (choice() === "waiting" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 1000));
+  if (choice() !== "approved") {
+    if (choice() === "waiting") {
+      d.topup = "declined";
+      say(s, { role: "step", tone: "warn", tag: "declined", text: "No answer in 3 minutes. The agent stops here." });
+    }
+    say(s, { role: "agent", text: `Stopped: ${done()}. ${MERCHANT.name} was never paid for the rest.` });
+    return;
+  }
+  const second = await work();
+  if (second?.status === "failed") return failed(second);
+  say(s, {
+    role: "agent",
+    text: second ? `${done()}. Even the top-up wasn't enough for ${queue.length} of them.` : `All ${paid().length} creatives are done for ${inr(spent())}, each paid on Base mainnet.`,
+  });
 }

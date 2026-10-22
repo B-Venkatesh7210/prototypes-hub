@@ -30,7 +30,18 @@ export type LabSession = {
   busy: string | null;
   resolvedReviews: Record<string, "approved" | "denied">;
   lastPaid?: { path: string; headers: Record<string, string> };
+  /** The real-merchant scenario's own agent: a design agent paying on Base mainnet. */
+  design?: DesignAgent;
   createdAt: number;
+};
+
+export type Creative = { id: string; title: string; src?: string; amount?: string; transaction?: string; status: "paid" | "denied" | "failed"; reason?: string; at: string };
+export type DesignAgent = {
+  agent: string;
+  agentKey: string;
+  mandate: string;
+  creatives: Creative[];
+  topup: "idle" | "waiting" | "approved" | "declined";
 };
 
 export const DEFAULT_MANDATE = { per_transaction: 0.5, per_month: 5, review_above: 0.2, categories: ["data"], principal: "role:research_lead" };

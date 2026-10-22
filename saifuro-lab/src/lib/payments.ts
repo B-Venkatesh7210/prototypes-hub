@@ -1,12 +1,16 @@
 import "server-only";
 import { createPublicClient, erc20Abi, formatUnits, http, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia } from "viem/chains";
+import { base, baseSepolia } from "viem/chains";
 
 export const NETWORK = "eip155:84532" as const;
 export const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 export const EXPLORER = "https://sepolia.basescan.org";
 export const FAUCET = "https://faucet.circle.com";
+
+export const MAINNET = "eip155:8453" as const;
+export const USDC_BASE: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+export const MAINNET_EXPLORER = "https://basescan.org";
 
 export function facilitatorUrl() {
   return process.env.X402_FACILITATOR_URL?.trim() || "https://x402.org/facilitator";
@@ -14,6 +18,12 @@ export function facilitatorUrl() {
 
 export function buyerAccount() {
   const key = process.env.BUYER_PRIVATE_KEY?.trim();
+  return key ? privateKeyToAccount(key as `0x${string}`) : null;
+}
+
+/** A separate wallet holding real USDC on Base mainnet, used only by the real-merchant scenario. */
+export function mainnetBuyerAccount() {
+  const key = process.env.BUYER_MAINNET_PRIVATE_KEY?.trim();
   return key ? privateKeyToAccount(key as `0x${string}`) : null;
 }
 
@@ -39,6 +49,24 @@ export async function buyerUsdc(force = false): Promise<string | null> {
     value = null;
   }
   balanceCache = { at: Date.now(), address: buyer.address, value };
+  return value;
+}
+
+const mainnetClient = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL?.trim() || "https://mainnet.base.org") });
+let mainnetCache: { at: number; address: string; value: string | null } | null = null;
+
+/** The mainnet wallet's real USDC, cached for 15 seconds. Null if unset or the RPC can't be reached. */
+export async function mainnetUsdc(force = false): Promise<string | null> {
+  const buyer = mainnetBuyerAccount();
+  if (!buyer) return null;
+  if (!force && mainnetCache && mainnetCache.address === buyer.address && Date.now() - mainnetCache.at < 15_000) return mainnetCache.value;
+  let value: string | null = null;
+  try {
+    value = formatUnits(await mainnetClient.readContract({ address: USDC_BASE, abi: erc20Abi, functionName: "balanceOf", args: [buyer.address] }), 6);
+  } catch {
+    value = null;
+  }
+  mainnetCache = { at: Date.now(), address: buyer.address, value };
   return value;
 }
 
