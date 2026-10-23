@@ -65,17 +65,7 @@ export function AgentPanel({ state, post }: { state: LabState; post: Post }) {
       <header className="flex min-h-[68px] flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-3">
         <div className="min-w-0">
           <div className="kicker">Buyer</div>
-          <div className="mt-0.5 flex items-center gap-2">
-            <h2 className="text-[17px] font-semibold tracking-[-0.015em] text-ink">{design ? "Design agent" : "Research agent"}</h2>
-            <span className="font-mono text-[12px] text-faint">{design ? (state.merchant.agent ?? "created on first run") : state.agent}</span>
-            <InfoTip
-              content={
-                design
-                  ? "A second agent with its own wallet on Base mainnet, holding real USDC. It buys images over x402, and only after Saifuro allows the payment."
-                  : "An AI agent with a Base Sepolia wallet. It pays per request over x402, and only after Saifuro allows the payment."
-              }
-            />
-          </div>
+          <h2 className="mt-0.5 text-[17px] font-semibold tracking-[-0.015em] text-ink">{design ? "Design agent" : "Research agent"}</h2>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {design && dm && (
